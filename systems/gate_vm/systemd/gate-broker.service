@@ -1,0 +1,15 @@
+[Unit]
+Description=Gate Lock Broker (Shared Concurrency Substrate)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/gate/gate.env
+WorkingDirectory=${GATE_REPO_DIR}
+ExecStart=/usr/bin/python3 ${GATE_REPO_DIR}/scripts/gate_broker.py --state-dir ${GATE_STATE_DIR} --host ${GATE_BROKER_HOST} --port ${GATE_BROKER_PORT} --lease-ms ${GATE_LEASE_MS}
+Restart=always
+User=gate
+Group=gate
+
+[Install]
+WantedBy=multi-user.target

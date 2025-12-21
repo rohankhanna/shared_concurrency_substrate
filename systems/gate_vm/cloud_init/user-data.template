@@ -1,0 +1,31 @@
+#cloud-config
+package_update: true
+packages:
+  - fuse
+  - openssh-server
+  - python3
+  - python3-pip
+  - git
+  - rsync
+  - curl
+  - ca-certificates
+
+users:
+  - name: gate
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - __SSH_KEY__
+
+runcmd:
+  - mkdir -p /var/lib/gate /mnt/gate /etc/gate
+  - chown gate:gate /var/lib/gate /mnt/gate
+  - git clone --branch __REPO_BRANCH__ __REPO_URL__ /opt/gate
+  - python3 -m pip install -r /opt/gate/requirements.txt
+  - cp /opt/gate/systems/gate_vm/systemd/gate.env /etc/gate/gate.env
+  - cp /opt/gate/systems/gate_vm/systemd/gate-broker.service /etc/systemd/system/gate-broker.service
+  - cp /opt/gate/systems/gate_vm/systemd/gate-fuse.service /etc/systemd/system/gate-fuse.service
+  - systemctl daemon-reload
+  - systemctl enable --now ssh
+  - systemctl enable --now gate-broker.service
+  - systemctl enable --now gate-fuse.service

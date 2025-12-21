@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Gate runtime state (if stored inside the repo)
+locks.db
+locks.db-wal
+locks.db-shm
+
+# VM build outputs (default paths)
+vm_build/
+vm_firecracker/
+
+# Firecracker hello demo artifacts/logs
+systems/firecracker_hello/artifacts/
+systems/firecracker_hello/console.log
+systems/firecracker_hello/firecracker.log
+systems/firecracker_hello/.build_rootfs/
+systems/firecracker_hello/.firecracker_config.json
+systems/firecracker_hello/.machine.json
+systems/firecracker_hello/.boot.json
+systems/firecracker_hello/.drive.json
+
+.DS_Store

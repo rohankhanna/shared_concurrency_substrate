@@ -1,0 +1,42 @@
+# Shared Concurrency Substrate Guide
+
+Date: 2025-12-21
+
+## Goal
+Provide a broker-enforced filesystem view that guarantees FIFO read/write locking for any editor or automation (humans, LLM CLIs, code-gen systems).
+
+## Architecture (short)
+- **Gate broker**: HTTP server that owns lock state in a SQLite DB.
+- **FUSE mount**: filesystem view that routes every open/read/write to the broker.
+- **Mount bridge** (optional): SSHFS or VirtioFS mount on the host.
+
+All writes go through the broker. FIFO fairness blocks reads if a writer is queued ahead.
+
+## Local setup (single machine)
+```
+python3 -m pip install -r requirements.txt
+sudo mkdir -p /var/lib/gate
+sudo chown $USER:$USER /var/lib/gate
+
+python3 scripts/gate_broker.py --state-dir /var/lib/gate --host 127.0.0.1 --port 8787
+mkdir -p /mnt/gate
+python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-host 127.0.0.1 --broker-port 8787 --foreground
+```
+
+## VM setup (recommended for stronger enforcement)
+Use the QEMU or Firecracker bundle in `systems/` to run the broker + mount inside a VM, then mount the VM view on the host with SSHFS.
+
+## FIFO smoke test (over SSHFS)
+```
+./scripts/smoke_test_fifo_sshfs.sh /mnt/gate_host
+```
+
+## Config defaults
+- State dir: `/var/lib/gate`
+- Broker host/port: `127.0.0.1:8787`
+- Env vars: `GATE_STATE_DIR`, `GATE_BROKER_HOST`, `GATE_BROKER_PORT`
+
+## Roadmap
+- Replace SSHFS with VirtioFS/NFS for performance.
+- Swap HTTP for Unix socket or gRPC.
+- Move broker to Rust for stronger isolation.

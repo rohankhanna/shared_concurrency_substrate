@@ -1,0 +1,18 @@
+[Unit]
+Description=Gate FUSE Mount (Shared Concurrency Substrate)
+After=network.target gate-broker.service
+Requires=gate-broker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/gate/gate.env
+WorkingDirectory=${GATE_REPO_DIR}
+ExecStartPre=/bin/mkdir -p ${GATE_MOUNT_DIR}
+ExecStartPre=/bin/chown gate:gate ${GATE_MOUNT_DIR}
+ExecStart=/usr/bin/python3 ${GATE_REPO_DIR}/scripts/gate_mount.py --root ${GATE_REPO_DIR} --mount ${GATE_MOUNT_DIR} --broker-host ${GATE_BROKER_HOST} --broker-port ${GATE_BROKER_PORT}
+Restart=always
+User=gate
+Group=gate
+
+[Install]
+WantedBy=multi-user.target

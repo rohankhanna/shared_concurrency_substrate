@@ -12,7 +12,7 @@ Date: 2025-12-21
 
 ## Host/VM helpers
 - `setup_vm_gate.sh`: install deps inside VM and start broker/mount.
-- `setup_host_gate.sh`: install SSHFS and mount VM view on host.
+- `setup_host_gate.sh`: install SSHFS and mount VM view on host (use `--host-mount` to choose a unique mountpoint per VM).
 - `export_shared_substrate.sh`: export this folder into a standalone repo tree.
 
 ## Tests

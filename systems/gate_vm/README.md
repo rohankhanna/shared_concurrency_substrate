@@ -31,10 +31,10 @@ sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils
 
 ## Mount VM view on the host
 ```
-mkdir -p /mnt/gate_host
-sshfs gate@127.0.0.1:/mnt/gate /mnt/gate_host -p 2222
+mkdir -p /mnt/gate_host_gate-vm
+sshfs gate@127.0.0.1:/mnt/gate /mnt/gate_host_gate-vm -p 2222
 ```
-Then open `/mnt/gate_host` in your editor. Locking and wait behavior is enforced inside the VM.
+Then open `/mnt/gate_host_gate-vm` in your editor. Locking and wait behavior is enforced inside the VM.
 
 ## Base OS selection
 - `--base ubuntu-22.04` (default)

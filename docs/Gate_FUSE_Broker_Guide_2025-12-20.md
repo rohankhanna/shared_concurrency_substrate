@@ -55,11 +55,11 @@ If you already have a repo on the host and want to mirror it into the VM:
 
 ## VM setup bundle (QEMU/KVM)
 For a fully packaged VM workflow, see:
-`systems/gate_vm/README.md`
+`systems/gate_vm/README.md` (use a unique host mount path per VM, e.g., `/mnt/gate_host_gate-vm`)
 
 ## VM setup bundle (Firecracker)
 For the Firecracker variant, see:
-`systems/gate_vm_firecracker/README.md`
+`systems/gate_vm_firecracker/README.md` (use a unique host mount path per VM, e.g., `/mnt/gate_host_gate-fc`)
 
 ## Smoke test (FIFO over SSHFS)
 Run on the host after mounting the VM view:

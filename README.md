@@ -88,10 +88,10 @@ python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-ho
 ./scripts/run_vm_qemu.sh --vm-dir ./vm_build --vm-name gate-vm --ssh-port 2222
 ```
 
-3) Mount the VM view on the host:
+3) Mount the VM view on the host (choose a unique mountpoint per VM):
 ```
-mkdir -p /mnt/gate_host
-sshfs gate@127.0.0.1:/mnt/gate /mnt/gate_host -p 2222
+mkdir -p /mnt/gate_host_gate-vm
+sshfs gate@127.0.0.1:/mnt/gate /mnt/gate_host_gate-vm -p 2222
 ```
 
 ### Firecracker
@@ -111,10 +111,10 @@ sshfs gate@127.0.0.1:/mnt/gate /mnt/gate_host -p 2222
 sudo ./scripts/run_vm_firecracker.sh --vm-dir ./vm_firecracker --vm-name gate-fc
 ```
 
-3) Mount the VM view on the host with SSHFS using the guest IP printed by the script:
+3) Mount the VM view on the host with SSHFS using the guest IP printed by the script (choose a unique mountpoint per VM):
 ```
-mkdir -p /mnt/gate_host
-sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host
+mkdir -p /mnt/gate_host_gate-fc
+sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
 
 ## Export from this repo

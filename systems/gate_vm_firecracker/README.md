@@ -41,8 +41,8 @@ ssh gate@<guest-ip>
 
 ## Mount the VM view on the host
 ```
-mkdir -p /mnt/gate_host
-sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host
+mkdir -p /mnt/gate_host_gate-fc
+sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
 
 ## Notes

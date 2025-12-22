@@ -1,5 +1,8 @@
 # Shared Concurrency Substrate VM Setup Bundle (QEMU/KVM)
 
+> **Note:** This QEMU/KVM bundle is a legacy flow. Prefer `gate up` from the repo
+> root for a one-command end-to-end setup with logs.
+
 Date: 2025-12-20
 
 ## Goal

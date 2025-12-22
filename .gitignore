@@ -8,6 +8,11 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Build outputs
+dist/
+.build_gate/
+*.spec
+
 # Gate runtime state (if stored inside the repo)
 locks.db
 locks.db-wal

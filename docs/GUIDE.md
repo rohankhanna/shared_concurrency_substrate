@@ -24,7 +24,7 @@ python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-ho
 ```
 
 ## VM setup (recommended for stronger enforcement)
-Use the QEMU or Firecracker bundle in `systems/` to run the broker + mount inside a VM, then mount the VM view on the host with SSHFS. Use a unique host mount path per VM (e.g., `/mnt/gate_host_gate-vm`, `/mnt/gate_host_gate-fc`).
+Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`. Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`.
 
 ## FIFO smoke test (over SSHFS)
 ```

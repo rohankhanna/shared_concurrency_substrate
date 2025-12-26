@@ -110,6 +110,17 @@ Check status and logs:
 ./dist/gate logs --vm-name gate-vm --component vm-run
 ```
 
+Check the installed binary version:
+```
+./dist/gate --version
+```
+
+Stop a VM and list known VMs:
+```
+./dist/gate vm-list
+./dist/gate down --vm-name gate-vm
+```
+
 ### Firecracker
 1) Ensure `firecracker` is installed and in PATH, then build artifacts:
 ```

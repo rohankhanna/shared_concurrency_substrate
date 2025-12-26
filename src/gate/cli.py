@@ -21,6 +21,7 @@ from .broker import LockBrokerServer
 from .client import BrokerEndpoint, LockBrokerClient
 from .config import BrokerConfig
 from .fuse_fs import mount_fuse
+from .version import get_version
 
 GATE_ENV_TEMPLATE = """# Shared concurrency substrate environment (Gate).
 GATE_STATE_DIR=/var/lib/gate
@@ -102,6 +103,7 @@ local-hostname: __VM_NAME__
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gate")
+    parser.add_argument("--version", action="version", version=f"gate {get_version()}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     broker = subparsers.add_parser("broker", help="Run the lock broker server")
@@ -195,6 +197,13 @@ def _build_parser() -> argparse.ArgumentParser:
     logs.add_argument("--vm-name", default="gate-vm")
     logs.add_argument("--component", default="all")
     logs.add_argument("--tail", type=int, default=200)
+
+    vm_list = subparsers.add_parser("vm-list", help="List known VMs from local state")
+
+    down = subparsers.add_parser("down", help="Stop a running VM and unmount host view")
+    down.add_argument("--vm-name", default=None)
+    down.add_argument("--force", action="store_true")
+    down.add_argument("--skip-unmount", action="store_true")
 
     host = subparsers.add_parser(
         "host-provision",
@@ -311,6 +320,36 @@ def _ssh_base_args(ssh_port: int, known_hosts: Path | None, accept_host_key: boo
     if accept_host_key:
         args += ["-o", "StrictHostKeyChecking=accept-new"]
     return args
+
+
+def _list_vm_names() -> list[str]:
+    state_root = _state_home() / "gate" / "state"
+    if not state_root.exists():
+        return []
+    return sorted([p.name for p in state_root.iterdir() if p.is_dir()])
+
+
+def _is_pid_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _unmount_path(path: Path) -> None:
+    if not path.exists():
+        return
+    with open("/proc/mounts", "r", encoding="utf-8") as mounts:
+        if not any(str(path) in line for line in mounts):
+            return
+    if shutil.which("fusermount3"):
+        _run(["fusermount3", "-u", str(path)])
+        return
+    if shutil.which("fusermount"):
+        _run(["fusermount", "-u", str(path)])
+        return
+    _run(["umount", str(path)])
 
 
 def _wait_for_ssh(
@@ -1012,6 +1051,67 @@ def main(argv: Iterable[str] | None = None) -> None:
         lines = log_path.read_text().splitlines()
         tail = lines[-args.tail :] if args.tail > 0 else lines
         print("\n".join(tail))
+        return
+
+    if args.command == "vm-list":
+        names = _list_vm_names()
+        if not names:
+            print("No VMs found.")
+            return
+        for name in names:
+            pid_file = _gate_state_dir(name) / "vm.pid"
+            status = "stopped"
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    if _is_pid_running(pid):
+                        status = f"running (pid {pid})"
+                except Exception:
+                    status = "stale pid"
+            print(f"{name}\t{status}")
+        return
+
+    if args.command == "down":
+        vm_names = _list_vm_names()
+        if args.vm_name is None:
+            if len(vm_names) == 1:
+                vm_name = vm_names[0]
+            elif len(vm_names) == 0:
+                parser.error("No VMs found. Provide --vm-name.")
+            else:
+                print("Multiple VMs found. Provide --vm-name.")
+                for name in vm_names:
+                    print(f"  - {name}")
+                return
+        else:
+            vm_name = args.vm_name
+
+        state_dir = _gate_state_dir(vm_name)
+        pid_file = state_dir / "vm.pid"
+
+        if not args.skip_unmount:
+            host_mount = _gate_mount_dir(vm_name)
+            try:
+                _unmount_path(host_mount)
+            except Exception as exc:
+                if not args.force:
+                    raise RuntimeError(f"Failed to unmount {host_mount}: {exc}") from exc
+
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+                if _is_pid_running(pid):
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(2)
+                    if _is_pid_running(pid):
+                        os.kill(pid, signal.SIGKILL)
+                pid_file.unlink(missing_ok=True)
+                print(f"Stopped VM {vm_name}")
+            except Exception as exc:
+                if not args.force:
+                    raise RuntimeError(f"Failed to stop VM {vm_name}: {exc}") from exc
+        else:
+            print(f"No PID file for {vm_name} (already stopped?)")
         return
 
     if args.command == "host-provision":

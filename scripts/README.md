@@ -4,7 +4,7 @@ Date: 2025-12-21
 
 These scripts are legacy helpers. Prefer the Gate executable subcommands:
 `gate build-binary`, `gate vm-build`, `gate vm-run`, `gate host-provision`,
-`gate host-mount`, `gate up`.
+`gate host-mount`, `gate up`, `gate vm-list`, `gate down`.
 
 ## Runtime
 - `gate_broker.py`: run the lock broker server.

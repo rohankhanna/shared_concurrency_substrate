@@ -125,6 +125,9 @@ Optional flags:
 Note: `gate up` starts the host mount (SSHFS runs in the background). Unmount with `gate down` or `fusermount3 -u <mount-path>`.
 For NFS mounts, `gate up` runs `sudo mount` on the host and `gate down` runs `sudo umount` if needed.
 
+NFS note: exporting the FUSE mount requires `allow_other` and `user_allow_other` in `/etc/fuse.conf`. `gate up`
+enables this automatically when `--host-mount-method nfs` is used.
+
 Check status and logs:
 ```
 ./dist/gate status --vm-name gate-vm

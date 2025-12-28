@@ -28,6 +28,7 @@ Add `--max-hold-ms` (or set `GATE_MAX_HOLD_MS`) to change the default 1-hour loc
 Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo> --host-mount-method nfs`.
 Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gate vm-list` and `gate down`.
 NFS is recommended for host editing; SSHFS is still available via `--host-mount-method sshfs`.
+When using NFS, the FUSE mount must allow other users: `user_allow_other` in `/etc/fuse.conf` and `--allow-other`.
 
 ## FIFO smoke test (over SSHFS)
 ```

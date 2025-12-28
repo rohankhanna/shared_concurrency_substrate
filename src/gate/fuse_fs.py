@@ -312,9 +312,18 @@ class GateFuse(Operations):
         return 0
 
 
-def mount_fuse(root: str, mountpoint: str, broker: LockBrokerClient, owner: str, lease_ms: int,
-               acquire_timeout_ms: int | None, max_hold_ms: int | None, foreground: bool) -> None:
+def mount_fuse(
+    root: str,
+    mountpoint: str,
+    broker: LockBrokerClient,
+    owner: str,
+    lease_ms: int,
+    acquire_timeout_ms: int | None,
+    max_hold_ms: int | None,
+    foreground: bool,
+    allow_other: bool = False,
+) -> None:
     if os.environ.get("GATE_FUSE_DEBUG") == "1":
         print(f"gate-fuse starting root={root!r} mountpoint={mountpoint!r}", file=sys.stderr, flush=True)
     fuse = GateFuse(root, broker, owner, lease_ms, acquire_timeout_ms, max_hold_ms)
-    FUSE(fuse, mountpoint, foreground=foreground)
+    FUSE(fuse, mountpoint, foreground=foreground, allow_other=allow_other)

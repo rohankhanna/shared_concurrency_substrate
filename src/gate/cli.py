@@ -31,6 +31,7 @@ GATE_BROKER_HOST=127.0.0.1
 GATE_BROKER_PORT=8787
 GATE_LEASE_MS=3600000
 GATE_MAX_HOLD_MS=3600000
+GATE_FUSE_ALLOW_OTHER=0
 """
 
 GATE_BROKER_SERVICE_TEMPLATE = """[Unit]
@@ -61,7 +62,7 @@ EnvironmentFile=/etc/gate/gate.env
 WorkingDirectory=${GATE_REPO_DIR}
 ExecStartPre=/bin/mkdir -p ${GATE_MOUNT_DIR}
 ExecStartPre=/bin/chown gate:gate ${GATE_MOUNT_DIR}
-ExecStart=/bin/sh -c 'if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate mount --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_mount.py" --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; fi'
+ExecStart=/bin/sh -c 'ALLOW_OTHER=""; [ "${GATE_FUSE_ALLOW_OTHER}" = "1" ] && ALLOW_OTHER="--allow-other"; if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate mount --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}" ${ALLOW_OTHER}; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_mount.py" --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}" ${ALLOW_OTHER}; fi'
 Restart=always
 User=gate
 Group=gate
@@ -125,6 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mount.add_argument("--acquire-timeout-ms", type=int, default=BrokerConfig().acquire_timeout_ms)
     mount.add_argument("--foreground", action="store_true")
     mount.add_argument("--owner", default=None)
+    mount.add_argument("--allow-other", action="store_true", help="Allow non-mount users to access the FUSE view")
 
     bundle_build = subparsers.add_parser("bundle-build", help="Build a Gate bundle tarball")
     bundle_build.add_argument("--binary", default=None, help="Path to gate binary")
@@ -581,6 +583,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             acquire_timeout_ms=args.acquire_timeout_ms,
             max_hold_ms=args.max_hold_ms,
             foreground=args.foreground,
+            allow_other=args.allow_other,
         )
         return
 
@@ -979,14 +982,16 @@ def main(argv: Iterable[str] | None = None) -> None:
                     known_hosts,
                     accept_host_key,
                     "gate@127.0.0.1",
-                    _ssh_shell_command(
-                        "sudo mkdir -p /var/lib/gate /opt/target; "
-                        "if ! grep -q ' /mnt/gate ' /proc/mounts; then sudo mkdir -p /mnt/gate; fi"
-                    ),
+                _ssh_shell_command(
+                    "sudo mkdir -p /var/lib/gate /opt/target; "
+                    "if ! grep -q ' /mnt/gate ' /proc/mounts; then sudo mkdir -p /mnt/gate; fi; "
+                    "if ! grep -q '^user_allow_other' /etc/fuse.conf 2>/dev/null; then "
+                    "echo 'user_allow_other' | sudo tee -a /etc/fuse.conf >/dev/null; fi"
                 ),
-                log_dir / "deps.log",
-                args.verbose,
-            )
+            ),
+            log_dir / "deps.log",
+            args.verbose,
+        )
             if args.host_mount_method == "nfs":
                 export_line = (
                     "/mnt/gate 10.0.2.2/32"
@@ -1097,7 +1102,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                         f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
                         "--broker-host 127.0.0.1 --broker-port 8787 "
                         f"--max-hold-ms {args.max_hold_ms} "
-                        "> /var/lib/gate/fuse.log 2>&1 &"
+                        + ("--allow-other " if args.host_mount_method == "nfs" else "")
+                        + "> /var/lib/gate/fuse.log 2>&1 &"
                     ),
                 ),
                 log_dir / "mount.log",

@@ -9,7 +9,7 @@ EnvironmentFile=/etc/gate/gate.env
 WorkingDirectory=${GATE_REPO_DIR}
 ExecStartPre=/bin/mkdir -p ${GATE_MOUNT_DIR}
 ExecStartPre=/bin/chown gate:gate ${GATE_MOUNT_DIR}
-ExecStart=/bin/sh -c 'if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate mount --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_mount.py" --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; fi'
+ExecStart=/bin/sh -c 'ALLOW_OTHER=""; [ "${GATE_FUSE_ALLOW_OTHER}" = "1" ] && ALLOW_OTHER="--allow-other"; if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate mount --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}" ${ALLOW_OTHER}; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_mount.py" --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}" ${ALLOW_OTHER}; fi'
 Restart=always
 User=gate
 Group=gate

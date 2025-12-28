@@ -29,6 +29,7 @@ def main() -> None:
     parser.add_argument("--acquire-timeout-ms", type=int, default=BrokerConfig().acquire_timeout_ms)
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--owner", default=None)
+    parser.add_argument("--allow-other", action="store_true")
     args = parser.parse_args()
 
     owner = args.owner
@@ -47,6 +48,7 @@ def main() -> None:
         acquire_timeout_ms=args.acquire_timeout_ms,
         max_hold_ms=args.max_hold_ms,
         foreground=args.foreground,
+        allow_other=args.allow_other,
     )
 
 

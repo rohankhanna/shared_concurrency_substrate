@@ -6,9 +6,10 @@ import errno
 import os
 import sys
 import threading
+import uuid
 from typing import Dict
 
-from fuse import FUSE, FuseOSError, Operations, fuse_get_context
+from fuse import FUSE, FuseOSError, Operations
 
 from .client import LockBrokerClient
 
@@ -67,8 +68,8 @@ class GateFuse(Operations):
         path = path.lstrip("/")
         return path or "."
 
-    def _acquire(self, path: str, mode: str) -> tuple[str, str]:
-        owner = self._owner_for_request()
+    def _acquire(self, path: str, mode: str, owner: str | None = None) -> tuple[str, str]:
+        owner = owner or self._new_owner_token()
         payload = self.broker.acquire(
             path=path,
             mode=mode,
@@ -85,19 +86,24 @@ class GateFuse(Operations):
     def _heartbeat(self, lock_id: str, owner: str | None = None) -> None:
         self.broker.heartbeat(lock_id=lock_id, owner=owner or self.owner, lease_ms=self.lease_ms)
 
-    def _owner_for_request(self) -> str:
-        try:
-            _, _, pid = fuse_get_context()
-        except Exception:
-            pid = None
-        if pid is None:
-            return self.owner
-        return f"{self.owner}:{pid}"
+    def _new_owner_token(self) -> str:
+        return f"{self.owner}:{uuid.uuid4().hex}"
+
+    def _owner_for_key(self, key: str) -> str | None:
+        with self._fd_lock:
+            for fh, fh_path in self._handle_paths.items():
+                if fh_path == key:
+                    return self._handle_owners.get(fh)
+        return None
+
+    def _acquire_for_key(self, key: str, mode: str) -> tuple[str, str]:
+        owner = self._owner_for_key(key) or self._new_owner_token()
+        return self._acquire(key, mode, owner=owner)
 
     def _acquire_multi(self, paths: list[str]) -> list[tuple[str, str]]:
         lock_ids: list[tuple[str, str]] = []
         for path in sorted(paths):
-            lock_ids.append(self._acquire(path, "write"))
+            lock_ids.append(self._acquire_for_key(path, "write"))
         return lock_ids
 
     def _release_multi(self, lock_ids: list[tuple[str, str]]) -> None:
@@ -110,14 +116,14 @@ class GateFuse(Operations):
             raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.chmod(self._full_path(path), mode)
         finally:
             self._release(lock_id, owner=owner)
 
     def chown(self, path, uid, gid):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.chown(self._full_path(path), uid, gid)
         finally:
@@ -165,21 +171,21 @@ class GateFuse(Operations):
         return pathname
 
     def mknod(self, path, mode, dev):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.mknod(self._full_path(path), mode, dev)
         finally:
             self._release(lock_id, owner=owner)
 
     def rmdir(self, path):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.rmdir(self._full_path(path))
         finally:
             self._release(lock_id, owner=owner)
 
     def mkdir(self, path, mode):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.mkdir(self._full_path(path), mode)
         finally:
@@ -202,7 +208,7 @@ class GateFuse(Operations):
         )}
 
     def unlink(self, path):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.unlink(self._full_path(path))
         finally:
@@ -230,7 +236,7 @@ class GateFuse(Operations):
             self._release_multi(lock_ids)
 
     def utimens(self, path, times=None):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             return os.utime(self._full_path(path), times)
         finally:
@@ -239,7 +245,8 @@ class GateFuse(Operations):
     def open(self, path, flags):
         mode = "write" if self._is_write_flags(flags) else "read"
         try:
-            lock_id, owner = self._acquire(self._lock_key(path), mode)
+            key = self._lock_key(path)
+            lock_id, owner = self._acquire_for_key(key, mode)
         except Exception as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
                 print(
@@ -273,7 +280,8 @@ class GateFuse(Operations):
 
     def create(self, path, mode, fi=None):
         try:
-            lock_id, owner = self._acquire(self._lock_key(path), "write")
+            key = self._lock_key(path)
+            lock_id, owner = self._acquire_for_key(key, "write")
         except Exception as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
                 print(
@@ -327,7 +335,7 @@ class GateFuse(Operations):
         return os.write(fd, buf)
 
     def truncate(self, path, length, fh=None):
-        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire_for_key(self._lock_key(path), "write")
         try:
             full_path = self._full_path(path)
             with open(full_path, "r+b") as f:

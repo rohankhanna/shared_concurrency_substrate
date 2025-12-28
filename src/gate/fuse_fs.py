@@ -92,24 +92,40 @@ class GateFuse(Operations):
         for lock_id in reversed(lock_ids):
             self._release(lock_id)
 
+    def _borrow_lock(self, path: str) -> str | None:
+        key = self._lock_key(path)
+        with self._fd_lock:
+            for fh, fh_path in self._handle_paths.items():
+                if fh_path == key:
+                    return self._handle_locks.get(fh)
+        return None
+
     def access(self, path, mode):
         full_path = self._full_path(path)
         if not os.access(full_path, mode):
             raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
-        lock_id = self._acquire(self._lock_key(path), "write")
-        try:
-            return os.chmod(self._full_path(path), mode)
-        finally:
-            self._release(lock_id)
+        lock_id = self._borrow_lock(path)
+        if lock_id is None:
+            lock_id = self._acquire(self._lock_key(path), "write")
+            try:
+                return os.chmod(self._full_path(path), mode)
+            finally:
+                self._release(lock_id)
+        self._heartbeat(lock_id)
+        return os.chmod(self._full_path(path), mode)
 
     def chown(self, path, uid, gid):
-        lock_id = self._acquire(self._lock_key(path), "write")
-        try:
-            return os.chown(self._full_path(path), uid, gid)
-        finally:
-            self._release(lock_id)
+        lock_id = self._borrow_lock(path)
+        if lock_id is None:
+            lock_id = self._acquire(self._lock_key(path), "write")
+            try:
+                return os.chown(self._full_path(path), uid, gid)
+            finally:
+                self._release(lock_id)
+        self._heartbeat(lock_id)
+        return os.chown(self._full_path(path), uid, gid)
 
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
@@ -218,11 +234,15 @@ class GateFuse(Operations):
             self._release_multi(lock_ids)
 
     def utimens(self, path, times=None):
-        lock_id = self._acquire(self._lock_key(path), "write")
-        try:
-            return os.utime(self._full_path(path), times)
-        finally:
-            self._release(lock_id)
+        lock_id = self._borrow_lock(path)
+        if lock_id is None:
+            lock_id = self._acquire(self._lock_key(path), "write")
+            try:
+                return os.utime(self._full_path(path), times)
+            finally:
+                self._release(lock_id)
+        self._heartbeat(lock_id)
+        return os.utime(self._full_path(path), times)
 
     def open(self, path, flags):
         mode = "write" if self._is_write_flags(flags) else "read"
@@ -312,13 +332,20 @@ class GateFuse(Operations):
         return os.write(fd, buf)
 
     def truncate(self, path, length, fh=None):
-        lock_id = self._acquire(self._lock_key(path), "write")
-        try:
-            full_path = self._full_path(path)
-            with open(full_path, "r+b") as f:
-                f.truncate(length)
-        finally:
-            self._release(lock_id)
+        lock_id = self._borrow_lock(path)
+        if lock_id is None:
+            lock_id = self._acquire(self._lock_key(path), "write")
+            try:
+                full_path = self._full_path(path)
+                with open(full_path, "r+b") as f:
+                    f.truncate(length)
+            finally:
+                self._release(lock_id)
+            return
+        self._heartbeat(lock_id)
+        full_path = self._full_path(path)
+        with open(full_path, "r+b") as f:
+            f.truncate(length)
 
     def flush(self, path, fh):
         if os.environ.get("GATE_RELEASE_ON_FLUSH", "1") == "1":

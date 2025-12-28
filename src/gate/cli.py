@@ -889,7 +889,10 @@ def main(argv: Iterable[str] | None = None) -> None:
                     known_hosts,
                     accept_host_key,
                     "gate@127.0.0.1",
-                    "sudo mkdir -p /var/lib/gate /mnt/gate /opt/target",
+                    _ssh_shell_command(
+                        "sudo mkdir -p /var/lib/gate /opt/target; "
+                        "if ! grep -q ' /mnt/gate ' /proc/mounts; then sudo mkdir -p /mnt/gate; fi"
+                    ),
                 ),
                 log_dir / "deps.log",
                 args.verbose,

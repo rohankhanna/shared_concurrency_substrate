@@ -3,7 +3,7 @@
 Date: 2025-12-21
 
 ## Purpose
-A broker-enforced filesystem gateway that applies strict FIFO read/write locking to any editor or automation. This package is the portable subset for a standalone repo.
+A broker-enforced filesystem gateway that applies strict FIFO read/write locking to any editor or automation.
 
 ## Prerequisites
 ### Local (single machine)
@@ -143,14 +143,6 @@ sudo ./scripts/run_vm_firecracker.sh --vm-dir ./vm_firecracker --vm-name gate-fc
 mkdir -p /mnt/gate_host_gate-fc
 sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
-
-## Export from this repo
-Use the export script to assemble a clean, standalone tree:
-```
-./scripts/export_shared_substrate.sh --out-dir /path/to/new-repo
-```
-
-The exported tree includes the broker, FUSE mount, VM build/run scripts, and docs.
 
 ## Notes
 - Defaults use `/var/lib/gate` for state; override with `--state-dir` or `GATE_STATE_DIR`.

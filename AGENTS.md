@@ -18,5 +18,14 @@ documentation up to date, including `README.md` and any files in `docs/`.
 - [ ] New files/dirs that users must create are documented.
 - [ ] Deprecated steps are removed or clearly marked.
 
+## Git discipline (non‑breaking changes)
+After **every prompt** that results in non‑breaking changes, you MUST commit to
+git.
+
+- **On `main`**: prefer a single, clean commit per prompt (unless the user
+  explicitly requests otherwise).
+- **On feature/PR branches**: use incremental commits with clear messages
+  (e.g., `feat: …`, `docs: …`, `fix: …`). Squashing can happen at merge time.
+
 If you are unsure which docs apply, scan `README.md` and `docs/` and add a
 short note to the most relevant files.

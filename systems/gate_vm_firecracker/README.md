@@ -1,7 +1,6 @@
 # Shared Concurrency Substrate VM Setup Bundle (Firecracker)
 
-> **Note:** This Firecracker flow is legacy and still script-driven. The
-> `gate up` one-command workflow currently targets QEMU/KVM.
+> **Note:** The `gate up` one-command workflow currently targets QEMU/KVM.
 
 Date: 2025-12-20
 

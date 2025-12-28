@@ -131,6 +131,7 @@ For NFS mounts, `gate up` runs `sudo mount` on the host and `gate down` runs `su
 
 NFS note: exporting the FUSE mount requires `allow_other` and `user_allow_other` in `/etc/fuse.conf`. `gate up`
 enables this automatically when `--host-mount-method nfs` is used.
+For NFS exports, Gate enables `default_permissions` and `use_ino` on the FUSE mount to keep file handles stable.
 
 Check status and logs:
 ```

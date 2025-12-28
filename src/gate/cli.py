@@ -574,6 +574,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             owner = f"{socket.gethostname()}:{os.getpid()}"
         endpoint = BrokerEndpoint(host=args.broker_host, port=args.broker_port)
         client = LockBrokerClient(endpoint, timeout_seconds=None)
+        enable_export = args.allow_other
         mount_fuse(
             root=args.root,
             mountpoint=args.mount,
@@ -584,6 +585,8 @@ def main(argv: Iterable[str] | None = None) -> None:
             max_hold_ms=args.max_hold_ms,
             foreground=args.foreground,
             allow_other=args.allow_other,
+            default_permissions=enable_export,
+            use_ino=enable_export,
         )
         return
 

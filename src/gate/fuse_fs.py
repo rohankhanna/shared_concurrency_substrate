@@ -322,8 +322,17 @@ def mount_fuse(
     max_hold_ms: int | None,
     foreground: bool,
     allow_other: bool = False,
+    default_permissions: bool = False,
+    use_ino: bool = False,
 ) -> None:
     if os.environ.get("GATE_FUSE_DEBUG") == "1":
         print(f"gate-fuse starting root={root!r} mountpoint={mountpoint!r}", file=sys.stderr, flush=True)
     fuse = GateFuse(root, broker, owner, lease_ms, acquire_timeout_ms, max_hold_ms)
-    FUSE(fuse, mountpoint, foreground=foreground, allow_other=allow_other)
+    FUSE(
+        fuse,
+        mountpoint,
+        foreground=foreground,
+        allow_other=allow_other,
+        default_permissions=default_permissions,
+        use_ino=use_ino,
+    )

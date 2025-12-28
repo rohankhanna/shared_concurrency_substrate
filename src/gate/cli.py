@@ -678,6 +678,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                 "--onefile",
                 "--name",
                 args.name,
+                "--paths",
+                str(repo_root / "src"),
                 "--distpath",
                 str(out_dir),
                 "--workpath",

@@ -69,6 +69,7 @@ python -m pip install -r "$ROOT_DIR/requirements.txt" pyinstaller >/dev/null
 pyinstaller \
   --onefile \
   --name "$NAME" \
+  --paths "$ROOT_DIR/src" \
   --distpath "$OUT_DIR" \
   --workpath "$PYI_WORK" \
   --specpath "$PYI_SPEC" \

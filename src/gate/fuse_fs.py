@@ -96,8 +96,9 @@ class GateFuse(Operations):
                     return self._handle_owners.get(fh)
         return None
 
-    def _acquire_for_key(self, key: str, mode: str) -> tuple[str, str]:
-        owner = self._owner_for_key(key) or self._new_owner_token()
+    def _acquire_for_key(self, key: str, mode: str, reuse_owner: bool = True) -> tuple[str, str]:
+        owner = self._owner_for_key(key) if reuse_owner else None
+        owner = owner or self._new_owner_token()
         return self._acquire(key, mode, owner=owner)
 
     def _acquire_multi(self, paths: list[str]) -> list[tuple[str, str]]:
@@ -246,7 +247,7 @@ class GateFuse(Operations):
         mode = "write" if self._is_write_flags(flags) else "read"
         try:
             key = self._lock_key(path)
-            lock_id, owner = self._acquire_for_key(key, mode)
+            lock_id, owner = self._acquire_for_key(key, mode, reuse_owner=False)
         except Exception as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
                 print(
@@ -281,7 +282,7 @@ class GateFuse(Operations):
     def create(self, path, mode, fi=None):
         try:
             key = self._lock_key(path)
-            lock_id, owner = self._acquire_for_key(key, "write")
+            lock_id, owner = self._acquire_for_key(key, "write", reuse_owner=False)
         except Exception as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
                 print(

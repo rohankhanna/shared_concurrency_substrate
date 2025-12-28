@@ -14,9 +14,10 @@ All writes go through the broker. FIFO fairness blocks reads if a writer is queu
 
 ## Re‑entrant locks (per handle)
 The broker treats repeated lock requests from the same **handle owner** and path as re‑entrant. The FUSE layer
-assigns a unique owner token per open handle and reuses that token for follow‑up metadata operations on the
-same path (for example, `touch` calling `utimens` while the FD is open). The broker maintains a per‑owner hold
-count and releases the lock only when the count returns to zero.
+assigns a unique owner token per open handle, reuses that token for follow‑up metadata operations on the same
+path when a handle already exists (for example, `touch` calling `utimens` while the FD is open), and always
+uses a fresh owner token for new opens. The broker maintains a per‑owner hold count and releases the lock only
+when the count returns to zero.
 
 ## Local setup (single machine)
 ```

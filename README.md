@@ -189,7 +189,7 @@ python3 tests/manual/lock_demo_b.py /mnt/gate/path/to/file
 
 ## Lock behavior notes
 - FIFO fairness: reads block behind queued writers.
-- Re-entrant per handle: repeated lock requests from the same handle owner and path increment a hold count; the lock is released when the count returns to zero.
+- Re-entrant per handle: repeated lock requests from the same handle owner and path increment a hold count; the lock is released when the count returns to zero. New opens always use a fresh owner token, so unrelated writers still block; follow‑up metadata calls reuse the handle owner when a handle already exists.
 - Default max hold cap is 1 hour (3600000 ms). Increase or decrease with `--max-hold-ms`.
 
 ## Troubleshooting

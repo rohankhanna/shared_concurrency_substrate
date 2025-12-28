@@ -90,10 +90,11 @@ When the cap is reached, the broker drops the lock and the holder must re‑acqu
 Configure it with `--max-hold-ms` (CLI) or `GATE_MAX_HOLD_MS` (env). Set it higher or lower to match your
 collaboration style.
 
-### Re‑entrant lock behavior (per process)
-Gate treats lock requests from the same client process as re‑entrant on the same path. This prevents deadlocks
-when a tool performs multiple metadata calls (e.g., `touch` -> `utimens`) while a file handle is still open.
-The broker tracks a per‑owner hold count and only releases the lock when the count returns to zero.
+### Re‑entrant lock behavior (per handle)
+Gate treats repeated lock requests from the same **handle owner** as re‑entrant on the same path. The FUSE layer
+assigns a unique owner token per open handle and reuses that token for follow‑up metadata calls on the same path,
+preventing deadlocks (e.g., `touch` -> `utimens` while the file descriptor is still open). The broker tracks a
+per‑owner hold count and only releases the lock when the count returns to zero.
 
 ## Build a standalone Gate executable (no Python runtime needed)
 This produces a single Linux executable (`./dist/gate`) that runs the broker and FUSE mount without Python.

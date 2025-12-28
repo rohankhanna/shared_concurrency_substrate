@@ -12,11 +12,11 @@ Provide a broker-enforced filesystem view that guarantees FIFO read/write lockin
 
 All writes go through the broker. FIFO fairness blocks reads if a writer is queued ahead.
 
-## Re‑entrant locks (per process)
-The broker treats repeated lock requests from the same client process and path as re‑entrant. This prevents
-deadlocks when a tool issues multiple metadata operations while a file handle is still open (for example,
-`touch` calling `utimens`). The broker maintains a per‑owner hold count and releases the lock only when the
-count returns to zero.
+## Re‑entrant locks (per handle)
+The broker treats repeated lock requests from the same **handle owner** and path as re‑entrant. The FUSE layer
+assigns a unique owner token per open handle and reuses that token for follow‑up metadata operations on the
+same path (for example, `touch` calling `utimens` while the FD is open). The broker maintains a per‑owner hold
+count and releases the lock only when the count returns to zero.
 
 ## Local setup (single machine)
 ```

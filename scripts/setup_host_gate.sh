@@ -12,6 +12,9 @@ Options:
   --vm-mount PATH          VM FUSE mount path (default: /mnt/gate)
   --host-mount PATH        Host mount path (default: /mnt/gate_host)
   --install-sshfs          Install sshfs on host
+  --install-nfs            Install NFS client tools on host
+  --mount-method METHOD    sshfs or nfs (default: sshfs)
+  --nfs-port PORT          NFS port forwarded to guest (default: 2049)
   --sync                  Rsync host repo to VM path
   --repo-path PATH         Host repo path for --sync
   --vm-repo-path PATH      VM repo path for --sync
@@ -27,6 +30,9 @@ SSH_PORT="22"
 VM_MOUNT="/mnt/gate"
 HOST_MOUNT="/mnt/gate_host"
 INSTALL_SSHFS=0
+INSTALL_NFS=0
+MOUNT_METHOD="sshfs"
+NFS_PORT="2049"
 DO_SYNC=0
 REPO_PATH=""
 VM_REPO_PATH=""
@@ -59,6 +65,18 @@ while [[ $# -gt 0 ]]; do
     --install-sshfs)
       INSTALL_SSHFS=1
       shift
+      ;;
+    --install-nfs)
+      INSTALL_NFS=1
+      shift
+      ;;
+    --mount-method)
+      MOUNT_METHOD="$2"
+      shift 2
+      ;;
+    --nfs-port)
+      NFS_PORT="$2"
+      shift 2
       ;;
     --sync)
       DO_SYNC=1
@@ -101,10 +119,18 @@ if [[ -z "$VM_USER" || -z "$VM_HOST" ]]; then
   usage
   exit 1
 fi
+if [[ "$MOUNT_METHOD" != "sshfs" && "$MOUNT_METHOD" != "nfs" ]]; then
+  echo "--mount-method must be sshfs or nfs" >&2
+  exit 1
+fi
 
 if [[ "$INSTALL_SSHFS" -eq 1 ]]; then
   sudo apt-get update
   sudo apt-get install -y sshfs
+fi
+if [[ "$INSTALL_NFS" -eq 1 ]]; then
+  sudo apt-get update
+  sudo apt-get install -y nfs-common
 fi
 
 if [[ "$DO_SYNC" -eq 1 ]]; then
@@ -131,6 +157,10 @@ if [[ -n "$BUNDLE_PATH" ]]; then
 fi
 
 mkdir -p "$HOST_MOUNT"
-sshfs -o "port=$SSH_PORT" "$VM_USER@$VM_HOST:$VM_MOUNT" "$HOST_MOUNT"
-
-echo "Mounted VM view at $HOST_MOUNT"
+if [[ "$MOUNT_METHOD" == "nfs" ]]; then
+  sudo mount -t nfs4 -o "vers=4,proto=tcp,port=$NFS_PORT" "$VM_HOST:/" "$HOST_MOUNT"
+  echo "Mounted VM view via NFS at $HOST_MOUNT"
+else
+  sshfs -o "port=$SSH_PORT" "$VM_USER@$VM_HOST:$VM_MOUNT" "$HOST_MOUNT"
+  echo "Mounted VM view via SSHFS at $HOST_MOUNT"
+fi

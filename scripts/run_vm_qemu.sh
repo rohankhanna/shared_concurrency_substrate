@@ -9,6 +9,7 @@ Options:
   --vm-dir PATH      Directory containing <name>.qcow2 and <name>-seed.img
   --vm-name NAME     VM name used in filenames
   --ssh-port PORT    Host port forwarded to guest 22 (default: 2222)
+  --nfs-port PORT    Host port forwarded to guest 2049 for NFS (optional)
   --memory MB        Memory size in MB (default: 4096)
   --cpus N           Number of vCPUs (default: 2)
 USAGE
@@ -17,6 +18,7 @@ USAGE
 VM_DIR=""
 VM_NAME=""
 SSH_PORT="2222"
+NFS_PORT=""
 MEMORY="4096"
 CPUS="2"
 
@@ -36,6 +38,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --memory)
       MEMORY="$2"
+      shift 2
+      ;;
+    --nfs-port)
+      NFS_PORT="$2"
       shift 2
       ;;
     --cpus)
@@ -79,6 +85,6 @@ qemu-system-x86_64 \
   -smp "$CPUS" \
   -drive file="$ROOT_DISK",if=virtio,format=qcow2 \
   -drive file="$SEED_IMG",if=virtio,format=raw \
-  -netdev user,id=net0,hostfwd=tcp::"$SSH_PORT"-:22 \
+  -netdev user,id=net0,hostfwd=tcp::"$SSH_PORT"-:22${NFS_PORT:+,hostfwd=tcp::"$NFS_PORT"-:2049} \
   -device virtio-net-pci,netdev=net0 \
   -nographic

@@ -19,8 +19,8 @@ These scripts are helpers. Prefer the Gate executable subcommands for most workf
 
 ## Host/VM helpers
 - `setup_vm_gate.sh`: VM installer helper.
-- `setup_host_gate.sh`: host helper (use `gate up` for end-to-end).
+- `setup_host_gate.sh`: host helper (use `gate up` for end-to-end). Supports `--mount-method nfs` or `sshfs`.
 - `export_shared_substrate.sh`: exports a copy of this folder into a new tree.
 
 ## Tests
-- `smoke_test_fifo_sshfs.sh`: end-to-end FIFO blocking check over SSHFS.
+- `smoke_test_fifo_sshfs.sh`: end-to-end FIFO blocking check over SSHFS (NFS is recommended for host editing).

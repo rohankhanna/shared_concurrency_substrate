@@ -22,14 +22,21 @@ sudo chown $USER:$USER /var/lib/gate
 
 ### Host + VM (recommended for stronger enforcement)
 - QEMU/KVM (or Firecracker) on the host.
-- `sshfs` on the host to mount the VM view.
+- Host mount method:
+  - **NFS (recommended)**: `nfs-common` on the host.
+  - **SSHFS (legacy)**: `sshfs` on the host.
 - Cloud image tools: `cloud-image-utils` and `qemu-utils`.
 - For Firecracker: `libguestfs-tools`, `dnsmasq`, `iproute2`, and a Firecracker binary in PATH.
 
 Install host tools (Ubuntu/Debian):
 ```
 sudo apt-get update
-sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils sshfs
+sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils nfs-common
+```
+
+If you prefer SSHFS (legacy):
+```
+sudo apt-get install -y sshfs
 ```
 
 Install Firecracker host tools (Ubuntu/Debian):
@@ -100,7 +107,8 @@ This runs the full workflow (build VM if needed, boot VM, install deps, copy the
   --vm-dir ./vm_build \
   --vm-name gate-vm \
   --ssh-key ~/.ssh/shared_concurrency_substrate_test.pub \
-  --repo-path /path/to/host/repo
+  --repo-path /path/to/host/repo \
+  --host-mount-method nfs
 ```
 
 Optional flags:
@@ -108,11 +116,14 @@ Optional flags:
 - `--binary /path/to/gate` (defaults to `which gate`)
 - `--redownload` (force base image re-download)
 - `--max-hold-ms <milliseconds>` (hard cap for read/write lock holds, default: 3600000)
+- `--host-mount-method sshfs|nfs` (default: sshfs; nfs is recommended for host editing)
+- `--nfs-port <port>` (default: 2049; forwarded to the VM when using NFS)
 - `--verbose` (stream logs to console)
 - `--dry-run` (print the commands without executing)
 - `--keep-vm-on-error` (don’t stop the VM if setup fails)
 
-Note: `gate up` starts the host SSHFS mount in the background. Unmount with `gate down` or `fusermount3 -u <mount-path>`.
+Note: `gate up` starts the host mount (SSHFS runs in the background). Unmount with `gate down` or `fusermount3 -u <mount-path>`.
+For NFS mounts, `gate up` runs `sudo mount` on the host and `gate down` runs `sudo umount` if needed.
 
 Check status and logs:
 ```

@@ -25,7 +25,7 @@ Inside the VM:
 
 On the host:
 ```
-./scripts/setup_host_gate.sh --vm-user <user> --vm-host <vm-ip> --install-sshfs
+./scripts/setup_host_gate.sh --vm-user <user> --vm-host <vm-ip> --install-nfs --mount-method nfs
 ```
 
 ## Start the broker (manual)
@@ -49,7 +49,7 @@ If you already have a repo on the host and want to mirror it into the VM:
 ./scripts/setup_host_gate.sh --vm-user <user> --vm-host <vm-ip> --sync --repo-path /path/to/host/repo --vm-repo-path /path/to/vm/repo
 ```
 2) Inside the VM, run the broker and mount using the VM repo path.
-3) On the host, mount the VM view with sshfs and edit through it.
+3) On the host, mount the VM view with **NFS (recommended)** or sshfs and edit through it.
 
 ## Notes
 - Reads will wait if a writer is queued ahead (strict FIFO).
@@ -65,7 +65,7 @@ For a fully packaged VM workflow, see:
 For the Firecracker variant, see:
 `systems/gate_vm_firecracker/README.md` (use a unique host mount path per VM, e.g., `/mnt/gate_host_gate-fc`)
 
-## Smoke test (FIFO over SSHFS)
+## Smoke test (FIFO over host mount)
 Run on the host after mounting the VM view:
 ```
 ./scripts/smoke_test_fifo_sshfs.sh /mnt/gate_host

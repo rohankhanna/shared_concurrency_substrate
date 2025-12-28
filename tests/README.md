@@ -10,4 +10,4 @@ This repository organizes tests as:
 
 Both scripts accept:
 - `GATE_DEMO_MOUNT` (default: `~/.local/state/gate/mounts/gate-vm`)
-- `GATE_DEMO_FILE` (default: `tests/LOCK_DEMO.txt`)
+- `GATE_DEMO_FILE` (default: `LOCK_DEMO.txt`)

@@ -8,7 +8,7 @@ MOUNT_DIR = os.environ.get(
     "GATE_DEMO_MOUNT",
     "/home/kajsfasdfnaf/.local/state/gate/mounts/gate-vm",
 )
-REL_PATH = os.environ.get("GATE_DEMO_FILE", "tests/LOCK_DEMO.txt")
+REL_PATH = os.environ.get("GATE_DEMO_FILE", "LOCK_DEMO.txt")
 
 
 def _demo_path() -> str:
@@ -26,6 +26,7 @@ def _refresh_parent(path: str) -> None:
 def _open_with_retry(path: str, flags: int, mode: int | None = None) -> int:
     retries = 50
     delay = 0.2
+    fallback = os.path.join(MOUNT_DIR, os.path.basename(path))
     for _ in range(retries):
         try:
             if mode is None:
@@ -33,6 +34,13 @@ def _open_with_retry(path: str, flags: int, mode: int | None = None) -> int:
             return os.open(path, flags, mode)
         except FileNotFoundError:
             _refresh_parent(path)
+            if path != fallback:
+                try:
+                    if mode is None:
+                        return os.open(fallback, flags)
+                    return os.open(fallback, flags, mode)
+                except FileNotFoundError:
+                    _refresh_parent(fallback)
             time.sleep(delay)
     raise FileNotFoundError(path)
 

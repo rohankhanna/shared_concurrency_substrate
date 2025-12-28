@@ -158,7 +158,7 @@ fi
 
 mkdir -p "$HOST_MOUNT"
 if [[ "$MOUNT_METHOD" == "nfs" ]]; then
-  sudo mount -t nfs4 -o "vers=4,proto=tcp,port=$NFS_PORT" "$VM_HOST:/" "$HOST_MOUNT"
+  sudo mount -t nfs4 -o "vers=4,proto=tcp,port=$NFS_PORT" "$VM_HOST:$VM_MOUNT" "$HOST_MOUNT"
   echo "Mounted VM view via NFS at $HOST_MOUNT"
 else
   sshfs -o "port=$SSH_PORT" "$VM_USER@$VM_HOST:$VM_MOUNT" "$HOST_MOUNT"

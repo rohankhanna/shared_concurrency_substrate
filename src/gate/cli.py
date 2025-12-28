@@ -864,7 +864,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                 if args.host_mount_method == "nfs":
                     print(
                         f"- host mount: sudo mount -t nfs4 -o vers=4,proto=tcp,port={args.nfs_port} "
-                        f"127.0.0.1:/ {host_mount}"
+                        f"127.0.0.1:/mnt/gate {host_mount}"
                     )
                 else:
                     print(f"- host mount: /mnt/gate -> {host_mount}")
@@ -1117,7 +1117,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                             "nfs4",
                             "-o",
                             f"vers=4,proto=tcp,port={args.nfs_port}",
-                            "127.0.0.1:/",
+                            "127.0.0.1:/mnt/gate",
                             str(host_mount),
                         ]
                     )
@@ -1423,7 +1423,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     "nfs4",
                     "-o",
                     f"vers=4,proto=tcp,port={args.nfs_port}",
-                    f"{args.vm_host}:/",
+                    f"{args.vm_host}:{args.vm_mount}",
                     str(host_mount),
                 ]
             )

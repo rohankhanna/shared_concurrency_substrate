@@ -45,7 +45,7 @@ ssh gate@<guest-ip>
 Recommended (NFS):
 ```
 sudo apt-get install -y nfs-common
-sudo mount -t nfs4 -o vers=4,proto=tcp <guest-ip>:/ /mnt/gate_host_gate-fc
+sudo mount -t nfs4 -o vers=4,proto=tcp <guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
 
 SSHFS (legacy):

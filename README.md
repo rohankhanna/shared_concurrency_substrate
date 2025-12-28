@@ -1,166 +1,162 @@
 # Shared Concurrency Substrate (Gate + FUSE)
 
-Date: 2025-12-21
+Date: 2025-12-28
 
-## Purpose
-A broker-enforced filesystem gateway that applies strict FIFO read/write locking to any editor or automation.
+## What this is
+Gate provides a broker-enforced filesystem view that applies strict FIFO read/write locking to any editor or automation. You edit a mounted view, and the broker serializes access so writers cannot be skipped and readers block behind queued writers.
 
-## Prerequisites
-### Local (single machine)
-- Linux with FUSE enabled.
-- Python 3.10+ (only needed if you run the Python scripts directly or build the binary).
-- `fusepy` (in `requirements.txt`, only for Python mode).
+## Architecture (short)
+- Gate broker: HTTP server with a SQLite-backed lock store.
+- Gate FUSE mount: filesystem view that sends all open/read/write activity through the broker.
+- Optional VM: run the broker + mount in a VM and mount the VM view on the host (NFS recommended, SSHFS supported).
 
-Install dependencies (Ubuntu/Debian, Python mode):
+## Supported platforms
+- Linux x86_64 with FUSE enabled. (macOS/Windows not supported directly; use a Linux VM.)
+- For VM mode: hardware virtualization (KVM) and QEMU/KVM.
+
+## Setup from scratch
+
+### 1) Install system packages (Ubuntu/Debian)
+Local + build requirements:
 ```
 sudo apt-get update
-sudo apt-get install -y python3 python3-pip python3-venv fuse3 libfuse2
-python3 -m pip install -r requirements.txt
+sudo apt-get install -y \
+  python3 python3-pip python3-venv \
+  fuse3 libfuse3-3 libfuse2 \
+  openssh-client rsync
+```
+
+Host mount tools (choose one or install both):
+```
+sudo apt-get install -y sshfs nfs-common
+```
+
+VM host tools (QEMU/KVM):
+```
+sudo apt-get update
+sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils
+```
+
+Firecracker host tools (optional):
+```
+sudo apt-get update
+sudo apt-get install -y cloud-image-utils qemu-utils libguestfs-tools dnsmasq iproute2
+```
+
+### 2) Clone the repo
+```
+git clone <repo-url>
+cd shared_concurrency_substrate
+```
+
+### 3) Create a Python venv (needed for Python mode and for building the binary)
+```
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### 4) Build the Gate binary (recommended)
+```
+python3 scripts/gate_cli.py build-binary
+```
+This produces `dist/gate`.
+
+If you prefer Python-only operation, skip this step and run `scripts/gate_broker.py` and `scripts/gate_mount.py` directly.
+
+### 5) Prepare the Gate state directory
+```
 sudo mkdir -p /var/lib/gate
 sudo chown $USER:$USER /var/lib/gate
 ```
 
-### Host + VM (recommended for stronger enforcement)
-- QEMU/KVM (or Firecracker) on the host.
-- Host mount method:
-  - **NFS (recommended)**: `nfs-common` on the host.
-  - **SSHFS (legacy)**: `sshfs` on the host.
-- Cloud image tools: `cloud-image-utils` and `qemu-utils`.
-- For Firecracker: `libguestfs-tools`, `dnsmasq`, `iproute2`, and a Firecracker binary in PATH.
-
-Install host tools (Ubuntu/Debian):
-```
-sudo apt-get update
-sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils nfs-common
-```
-
-If you prefer SSHFS (legacy):
-```
-sudo apt-get install -y sshfs
-```
-
-Install Firecracker host tools (Ubuntu/Debian):
-```
-sudo apt-get update
-sudo apt-get install -y libguestfs-tools dnsmasq iproute2
-```
-
-Where missing files come from:
-- **Cloud images** are downloaded automatically by the build scripts from the official Ubuntu or Debian cloud image mirrors.
-- **Firecracker binary** (for `systems/gate_vm_firecracker` and the `firecracker_hello` demo) should be downloaded from the official Firecracker release artifacts or built from source, then placed on your PATH (e.g., `/usr/local/bin/firecracker`).
-- **Kernel image (vmlinux)** for `systems/firecracker_hello` should be downloaded from the same Firecracker release bundle (look for `vmlinux`) or built locally.
-
-Official download URLs (reference):
-```
-Ubuntu 22.04 cloud image (amd64):
-https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
-
-Debian 12 (Bookworm) genericcloud image (amd64):
-https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2
-
-Firecracker releases (download firecracker + vmlinux from the latest tag):
-https://github.com/firecracker-microvm/firecracker/releases
-```
-
-## Quick start (local, executable)
-If you already have the `gate` binary, skip to step 2.
-
-1) Build the executable from source (no shell scripts):
-```
-PYTHONPATH=./src python3 -m gate.cli build-binary
-```
-
-2) Start the broker:
+### 6A) Local, single-machine run
+Start the broker:
 ```
 ./dist/gate broker --state-dir /var/lib/gate --host 127.0.0.1 --port 8787
 ```
 
-3) Mount the repo view:
+Mount the repo view (in another terminal):
 ```
 mkdir -p /mnt/gate
-./dist/gate mount --root /path/to/repo --mount /mnt/gate --broker-host 127.0.0.1 --broker-port 8787 --foreground
+./dist/gate mount \
+  --root /path/to/repo \
+  --mount /mnt/gate \
+  --broker-host 127.0.0.1 \
+  --broker-port 8787 \
+  --foreground
 ```
 
-4) Open the mounted path in any editor. All writes go through the broker.
+Open `/mnt/gate` in your editor. All reads and writes are brokered.
 
-### Lock hold cap (hard limit)
-By default, Gate enforces a maximum contiguous hold time of **1 hour** for both read and write locks.
-When the cap is reached, the broker drops the lock and the holder must re‑acquire (returning to the end of the queue).
-
-Configure it with `--max-hold-ms` (CLI) or `GATE_MAX_HOLD_MS` (env). Set it higher or lower to match your
-collaboration style.
-
-### Re‑entrant lock behavior (per handle)
-Gate treats repeated lock requests from the same **handle owner** as re‑entrant on the same path. The FUSE layer
-assigns a unique owner token per open handle and reuses that token for follow‑up metadata calls on the same path,
-preventing deadlocks (e.g., `touch` -> `utimens` while the file descriptor is still open). The broker tracks a
-per‑owner hold count and only releases the lock when the count returns to zero.
-
-## Build a standalone Gate executable (no Python runtime needed)
-This produces a single Linux executable (`./dist/gate`) that runs the broker and FUSE mount without Python.
+Python-only alternative:
 ```
-PYTHONPATH=./src python3 -m gate.cli build-binary
+python3 scripts/gate_broker.py --state-dir /var/lib/gate --host 127.0.0.1 --port 8787
+python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-host 127.0.0.1 --broker-port 8787 --foreground
 ```
-If you don't have Python on the host, build the binary on another Linux x86_64 machine and copy `dist/gate` over, or publish it as a release artifact.
 
-## Quick start (VM, one command)
-This runs the full workflow (build VM if needed, boot VM, install deps, copy the binary, sync the repo, start broker+mount, and host‑mount the gated view), with logs in:
-`$XDG_STATE_HOME/gate/logs/<vm-name>/` (default: `~/.local/state/gate/logs/<vm-name>/`).
+Unmount:
+```
+fusermount3 -u /mnt/gate
+```
 
+### 6B) VM run (recommended for stronger enforcement)
+1) Create or choose an SSH key:
+```
+ssh-keygen -t ed25519 -f ~/.ssh/gate_vm -N ""
+```
+
+2) Run the one-command workflow (build VM if needed, boot VM, install deps, copy the binary, sync the repo, start broker + mount, host-mount the gated view):
 ```
 ./dist/gate up \
   --base ubuntu-24.04 \
   --vm-dir ./vm_build \
   --vm-name gate-vm \
-  --ssh-key ~/.ssh/shared_concurrency_substrate_test.pub \
+  --ssh-key ~/.ssh/gate_vm.pub \
   --repo-path /path/to/host/repo \
   --host-mount-method nfs
 ```
+
+Supported bases: `ubuntu-22.04`, `ubuntu-24.04`, `debian-12`.
+
 If your terminal stops echoing after `gate up`, run:
 ```
 stty echo
 ```
 
-Optional flags:
-- `--host-mount /path/to/mount` (defaults to `~/.local/state/gate/mounts/<vm-name>/`)
-- `--binary /path/to/gate` (defaults to `which gate`)
-- `--redownload` (force base image re-download)
-- `--max-hold-ms <milliseconds>` (hard cap for read/write lock holds, default: 3600000)
-- `--host-mount-method sshfs|nfs` (default: sshfs; nfs is recommended for host editing)
-- `--nfs-port <port>` (default: 2049; forwarded to the VM when using NFS)
-- `--verbose` (stream logs to console)
-- `--dry-run` (print the commands without executing)
-- `--keep-vm-on-error` (don’t stop the VM if setup fails)
-
-Note: `gate up` starts the host mount (SSHFS runs in the background). Unmount with `gate down` or `fusermount3 -u <mount-path>`.
-For NFS mounts, `gate up` runs `sudo mount` on the host and `gate down` runs `sudo umount` if needed.
-
-NFS note: exporting the FUSE mount requires `allow_other` and `user_allow_other` in `/etc/fuse.conf`. `gate up`
-enables this automatically when `--host-mount-method nfs` is used.
-For NFS exports, Gate enables `default_permissions` and `use_ino` on the FUSE mount to keep file handles stable.
-
-Check status and logs:
+Common VM commands:
 ```
 ./dist/gate status --vm-name gate-vm
 ./dist/gate logs --vm-name gate-vm --component vm-run
-```
-
-Check the installed binary version:
-```
-./dist/gate --version
-```
-
-## Tests
-- Manual lock demo scripts: `tests/manual/lock_demo_a.py` and `tests/manual/lock_demo_b.py`.
-
-Stop a VM and list known VMs:
-```
 ./dist/gate vm-list
 ./dist/gate down --vm-name gate-vm
 ```
 
-### Firecracker
-1) Ensure `firecracker` is installed and in PATH, then build artifacts:
+Host mount notes:
+- `--host-mount-method nfs` is recommended for editing.
+- NFS requires `user_allow_other` in `/etc/fuse.conf`; `gate up` appends it if missing.
+- NFS mounts and unmounts require sudo; `gate up`/`gate down` will call sudo when needed.
+- SSHFS runs in the background; unmount with `gate down` or `fusermount3 -u <mount>`.
+
+Logs and state directories (defaults):
+- Logs: `~/.local/state/gate/logs/<vm-name>/`
+- VM state: `~/.local/state/gate/state/<vm-name>/`
+- Host mount: `~/.local/state/gate/mounts/<vm-name>/`
+
+Optional flags for `gate up`:
+- `--host-mount /path/to/mount`
+- `--binary /path/to/gate` (defaults to `which gate`)
+- `--redownload` (force base image re-download)
+- `--max-hold-ms <milliseconds>` (hard cap for lock holds, default 3600000)
+- `--host-mount-method sshfs|nfs`
+- `--nfs-port <port>` (default 2049)
+- `--verbose` (stream logs to console)
+- `--dry-run` (print commands without executing)
+- `--keep-vm-on-error` (do not stop the VM if setup fails)
+
+### 6C) Firecracker VM (optional)
+The Firecracker flow uses scripts (the `gate up` workflow targets QEMU/KVM):
 ```
 ./scripts/build_vm_firecracker.sh \
   --base ubuntu-22.04 \
@@ -168,37 +164,44 @@ Stop a VM and list known VMs:
   --vm-name gate-fc \
   --repo-url <git-repo-url> \
   --repo-branch main \
-  --ssh-key ~/.ssh/id_rsa.pub
-```
+  --ssh-key ~/.ssh/gate_vm.pub
 
-2) Run the microVM (requires sudo):
-```
 sudo ./scripts/run_vm_firecracker.sh --vm-dir ./vm_firecracker --vm-name gate-fc
 ```
 
-3) Mount the VM view on the host with SSHFS using the guest IP printed by the script (choose a unique mountpoint per VM):
+Mount the VM view on the host (choose one):
 ```
-mkdir -p /mnt/gate_host_gate-fc
+sudo mount -t nfs4 -o vers=4,proto=tcp <guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
+# or
 sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
 
-## Notes
-- Defaults use `/var/lib/gate` for state; override with `--state-dir` or `GATE_STATE_DIR`.
-- Environment variables use `GATE_*` naming.
+### 7) Verify locking behavior (manual demo)
+```
+python3 tests/manual/lock_demo_a.py /mnt/gate/path/to/file
+python3 tests/manual/lock_demo_b.py /mnt/gate/path/to/file
+```
 
-## Firecracker hello demo (optional)
-The `systems/firecracker_hello` folder is a minimal microVM demo and does not ship binaries.
-1) Download the Firecracker release bundle and copy:
-   - `firecracker` to `systems/firecracker_hello/artifacts/firecracker`
-   - `vmlinux` to `systems/firecracker_hello/artifacts/vmlinux`
-2) Build a minimal rootfs (requires `busybox` and `mkfs.ext4`):
-```
-sudo apt-get update
-sudo apt-get install -y busybox e2fsprogs
-./systems/firecracker_hello/scripts/make_rootfs.sh
-```
-3) Run the demo:
-```
-./systems/firecracker_hello/scripts/run_firecracker.sh
-```
-4) Check `systems/firecracker_hello/console.log` for the “hello” line.
+## Configuration and defaults
+- State dir: `/var/lib/gate` (override with `--state-dir` or `GATE_STATE_DIR`)
+- Broker host/port: `127.0.0.1:8787` (`GATE_BROKER_HOST`, `GATE_BROKER_PORT`)
+- Lease and max hold: `--lease-ms`, `--max-hold-ms` (env: `GATE_LEASE_MS`, `GATE_MAX_HOLD_MS`)
+- Acquire timeout: `--acquire-timeout-ms` (env: `GATE_ACQUIRE_TIMEOUT_MS`)
+- VM workflow state root: `~/.local/state/gate/` (override with `XDG_STATE_HOME`)
+
+## Lock behavior notes
+- FIFO fairness: reads block behind queued writers.
+- Re-entrant per handle: repeated lock requests from the same handle owner and path increment a hold count; the lock is released when the count returns to zero.
+- Default max hold cap is 1 hour (3600000 ms). Increase or decrease with `--max-hold-ms`.
+
+## Troubleshooting
+- FUSE permission denied: ensure FUSE is enabled and your user can mount (`sudo usermod -aG fuse $USER`, then log out/in).
+- Host mount stuck: run `fusermount3 -u <mount>` and re-run.
+- `gate up` cannot find the binary: build it first or pass `--binary /path/to/gate`.
+- Need a clean repo sync into the VM: re-run `gate up` with `--repo-path` (it uses rsync with `--delete`).
+
+## Related docs
+- `docs/GUIDE.md` for architecture details and manual flows.
+- `systems/gate_vm/README.md` and `systems/gate_vm_firecracker/README.md` for VM internals.
+- `systems/firecracker_hello/README.md` for the minimal Firecracker demo.
+- `scripts/README.md` for helper script usage.

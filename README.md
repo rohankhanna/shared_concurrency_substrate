@@ -110,6 +110,10 @@ This runs the full workflow (build VM if needed, boot VM, install deps, copy the
   --repo-path /path/to/host/repo \
   --host-mount-method nfs
 ```
+If your terminal stops echoing after `gate up`, run:
+```
+stty echo
+```
 
 Optional flags:
 - `--host-mount /path/to/mount` (defaults to `~/.local/state/gate/mounts/<vm-name>/`)

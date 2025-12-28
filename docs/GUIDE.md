@@ -30,6 +30,8 @@ Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gat
 NFS is recommended for host editing; SSHFS is still available via `--host-mount-method sshfs`.
 When using NFS, the FUSE mount must allow other users: `user_allow_other` in `/etc/fuse.conf` and `--allow-other`.
 
+If your terminal stops echoing after `gate up`, run `stty echo`.
+
 ## FIFO smoke test (over SSHFS)
 ```
 ./scripts/smoke_test_fifo_sshfs.sh /mnt/gate_host

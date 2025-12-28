@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import shlex
 import shutil
@@ -20,7 +21,6 @@ from typing import Iterable
 from .broker import LockBrokerServer
 from .client import BrokerEndpoint, LockBrokerClient
 from .config import BrokerConfig
-from .fuse_fs import mount_fuse
 from .version import get_version
 
 GATE_ENV_TEMPLATE = """# Shared concurrency substrate environment (Gate).
@@ -225,6 +225,8 @@ def _build_parser() -> argparse.ArgumentParser:
     host_mount.add_argument("--ssh-port", type=int, default=22)
     host_mount.add_argument("--vm-mount", default="/mnt/gate")
     host_mount.add_argument("--host-mount", required=True)
+    host_mount.add_argument("--known-hosts")
+    host_mount.add_argument("--accept-host-key", action="store_true")
 
     return parser
 
@@ -264,6 +266,12 @@ def _run_logged(
                 raise subprocess.CalledProcessError(ret, cmd)
         else:
             subprocess.run(cmd, check=True, stdout=log, stderr=log, env=env)
+
+
+def _run_background(cmd: list[str], log_path: Path) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = open(log_path, "a", encoding="utf-8")
+    subprocess.Popen(cmd, stdout=log, stderr=log)
 
 
 def _find_repo_root() -> Path | None:
@@ -322,6 +330,20 @@ def _ssh_base_args(ssh_port: int, known_hosts: Path | None, accept_host_key: boo
     return args
 
 
+def _ssh_command(
+    ssh_port: int,
+    known_hosts: Path | None,
+    accept_host_key: bool,
+    user_host: str,
+    remote_cmd: str,
+) -> list[str]:
+    return ["ssh", *_ssh_base_args(ssh_port, known_hosts, accept_host_key), user_host, remote_cmd]
+
+
+def _ssh_shell_command(command: str) -> str:
+    return f"sh -lc {shlex.quote(command)}"
+
+
 def _list_vm_names() -> list[str]:
     state_root = _state_home() / "gate" / "state"
     if not state_root.exists():
@@ -338,7 +360,14 @@ def _is_pid_running(pid: int) -> bool:
 
 
 def _unmount_path(path: Path) -> None:
-    if not path.exists():
+    try:
+        exists = path.exists()
+    except OSError as exc:
+        if exc.errno == errno.ENOTCONN:
+            exists = True
+        else:
+            raise
+    if not exists:
         return
     with open("/proc/mounts", "r", encoding="utf-8") as mounts:
         if not any(str(path) in line for line in mounts):
@@ -350,6 +379,17 @@ def _unmount_path(path: Path) -> None:
         _run(["fusermount", "-u", str(path)])
         return
     _run(["umount", str(path)])
+
+
+def _ensure_mount_dir(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        if exc.errno == errno.ENOTCONN:
+            _unmount_path(path)
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            raise
 
 
 def _wait_for_ssh(
@@ -473,6 +513,8 @@ def main(argv: Iterable[str] | None = None) -> None:
         return
 
     if args.command == "mount":
+        from .fuse_fs import mount_fuse
+
         owner = args.owner
         if owner is None:
             owner = f"{socket.gethostname()}:{os.getpid()}"
@@ -820,38 +862,35 @@ def main(argv: Iterable[str] | None = None) -> None:
 
             # Step 4: Ensure libfuse in VM
             _run_logged(
-                [
-                    "ssh",
-                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key),
+                _ssh_command(
+                    args.ssh_port,
+                    known_hosts,
+                    accept_host_key,
                     "gate@127.0.0.1",
-                    "/bin/sh",
-                    "-lc",
                     "sudo env DEBIAN_FRONTEND=noninteractive apt-get update",
-                ],
+                ),
                 log_dir / "deps.log",
                 args.verbose,
             )
             _run_logged(
-                [
-                    "ssh",
-                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key),
+                _ssh_command(
+                    args.ssh_port,
+                    known_hosts,
+                    accept_host_key,
                     "gate@127.0.0.1",
-                    "/bin/sh",
-                    "-lc",
-                    "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y fuse3 libfuse3-3",
-                ],
+                    "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y fuse3 libfuse3-3 libfuse2",
+                ),
                 log_dir / "deps.log",
                 args.verbose,
             )
             _run_logged(
-                [
-                    "ssh",
-                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key),
+                _ssh_command(
+                    args.ssh_port,
+                    known_hosts,
+                    accept_host_key,
                     "gate@127.0.0.1",
-                    "/bin/sh",
-                    "-lc",
                     "sudo mkdir -p /var/lib/gate /mnt/gate /opt/target",
-                ],
+                ),
                 log_dir / "deps.log",
                 args.verbose,
             )
@@ -919,30 +958,32 @@ def main(argv: Iterable[str] | None = None) -> None:
 
             # Step 7: Start broker and mount in VM
             _run_logged(
-                [
-                    "ssh",
-                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key),
+                _ssh_command(
+                    args.ssh_port,
+                    known_hosts,
+                    accept_host_key,
                     "gate@127.0.0.1",
-                    "/bin/sh",
-                    "-lc",
-                    "nohup /opt/gate/bin/gate broker --state-dir /var/lib/gate --host 127.0.0.1 --port 8787 "
-                    "> /var/lib/gate/broker.log 2>&1 &",
-                ],
+                    _ssh_shell_command(
+                        "nohup /opt/gate/bin/gate broker --state-dir /var/lib/gate --host 127.0.0.1 --port 8787 "
+                        "> /var/lib/gate/broker.log 2>&1 &"
+                    ),
+                ),
                 log_dir / "broker.log",
                 args.verbose,
             )
             _run_logged(
-                [
-                    "ssh",
-                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key),
+                _ssh_command(
+                    args.ssh_port,
+                    known_hosts,
+                    accept_host_key,
                     "gate@127.0.0.1",
-                    "/bin/sh",
-                    "-lc",
-                    "nohup /opt/gate/bin/gate mount "
-                    f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
-                    "--broker-host 127.0.0.1 --broker-port 8787 "
-                    "> /var/lib/gate/fuse.log 2>&1 &",
-                ],
+                    _ssh_shell_command(
+                        "nohup /opt/gate/bin/gate mount "
+                        f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
+                        "--broker-host 127.0.0.1 --broker-port 8787 "
+                        "> /var/lib/gate/fuse.log 2>&1 &"
+                    ),
+                ),
                 log_dir / "mount.log",
                 args.verbose,
             )
@@ -950,18 +991,14 @@ def main(argv: Iterable[str] | None = None) -> None:
             # Step 8: Host mount
             if not args.skip_host_mount:
                 host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
-                host_mount.mkdir(parents=True, exist_ok=True)
-                _run_logged(
-                    [
-                        "sshfs",
-                        "-o",
-                        f"port={args.ssh_port}",
-                        f"gate@127.0.0.1:/mnt/gate",
-                        str(host_mount),
-                    ],
-                    log_dir / "host-mount.log",
-                    args.verbose,
-                )
+                _ensure_mount_dir(host_mount)
+                sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
+                if known_hosts is not None:
+                    sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
+                if accept_host_key:
+                    sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+                sshfs_cmd += [f"gate@127.0.0.1:/mnt/gate", str(host_mount)]
+                _run_background(sshfs_cmd, log_dir / "host-mount.log")
 
             print(f"Gate up complete. Logs: {log_dir}")
             return
@@ -1024,7 +1061,15 @@ def main(argv: Iterable[str] | None = None) -> None:
             print("SSH: unreachable")
 
         # Host mount check
-        if host_mount.exists():
+        try:
+            exists = host_mount.exists()
+        except OSError as exc:
+            if exc.errno == errno.ENOTCONN:
+                print(f"Host mount: stale (transport endpoint not connected) ({host_mount})")
+                return
+            raise
+
+        if exists:
             try:
                 with open("/proc/mounts", "r", encoding="utf-8") as f:
                     mounted = any(str(host_mount) in line for line in f)
@@ -1199,9 +1244,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     "-p",
                     str(args.ssh_port),
                     f"{args.vm_user}@{args.vm_host}",
-                    "/bin/sh",
-                    "-lc",
-                    install_cmd,
+                    _ssh_shell_command(install_cmd),
                 ]
             )
 
@@ -1239,17 +1282,16 @@ def main(argv: Iterable[str] | None = None) -> None:
     if args.command == "host-mount":
         _require_cmd("sshfs")
         host_mount = Path(args.host_mount).expanduser()
-        host_mount.mkdir(parents=True, exist_ok=True)
-        _run(
-            [
-                "sshfs",
-                "-o",
-                f"port={args.ssh_port}",
-                f"{args.vm_user}@{args.vm_host}:{args.vm_mount}",
-                str(host_mount),
-            ]
-        )
-        print(f"Mounted {args.vm_host}:{args.vm_mount} at {host_mount}")
+        _ensure_mount_dir(host_mount)
+        sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
+        if args.known_hosts:
+            known_hosts = Path(args.known_hosts).expanduser()
+            sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
+        if args.accept_host_key:
+            sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+        sshfs_cmd += [f"{args.vm_user}@{args.vm_host}:{args.vm_mount}", str(host_mount)]
+        _run_background(sshfs_cmd, _gate_log_dir("host-mount") / "sshfs.log")
+        print(f"Mount started: {args.vm_host}:{args.vm_mount} -> {host_mount}")
         return
 
     parser.error("Unknown command")

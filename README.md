@@ -14,7 +14,7 @@ A broker-enforced filesystem gateway that applies strict FIFO read/write locking
 Install dependencies (Ubuntu/Debian, Python mode):
 ```
 sudo apt-get update
-sudo apt-get install -y python3 python3-pip python3-venv fuse3
+sudo apt-get install -y python3 python3-pip python3-venv fuse3 libfuse2
 python3 -m pip install -r requirements.txt
 sudo mkdir -p /var/lib/gate
 sudo chown $USER:$USER /var/lib/gate
@@ -103,6 +103,8 @@ Optional flags:
 - `--verbose` (stream logs to console)
 - `--dry-run` (print the commands without executing)
 - `--keep-vm-on-error` (don’t stop the VM if setup fails)
+
+Note: `gate up` starts the host SSHFS mount in the background. Unmount with `gate down` or `fusermount3 -u <mount-path>`.
 
 Check status and logs:
 ```

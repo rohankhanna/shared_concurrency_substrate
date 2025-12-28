@@ -235,16 +235,21 @@ class GateFuse(Operations):
                     file=sys.stderr,
                     flush=True,
                 )
-            raise
+            raise FuseOSError(errno.EIO)
         full_path = self._full_path(path)
         if os.environ.get("GATE_FUSE_DEBUG") == "1":
             print(f"gate-fuse open path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
         try:
             fd = os.open(full_path, flags)
-        except FileNotFoundError:
+        except OSError as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
-                print(f"gate-fuse open ENOENT path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
-            raise
+                print(
+                    f"gate-fuse open error path={path!r} full_path={full_path!r} err={exc!r}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            self._release(lock_id)
+            raise FuseOSError(exc.errno)
         with self._fd_lock:
             self._next_fh += 1
             fh = self._next_fh
@@ -254,9 +259,30 @@ class GateFuse(Operations):
         return fh
 
     def create(self, path, mode, fi=None):
-        lock_id = self._acquire(self._lock_key(path), "write")
+        try:
+            lock_id = self._acquire(self._lock_key(path), "write")
+        except Exception as exc:
+            if os.environ.get("GATE_FUSE_DEBUG") == "1":
+                print(
+                    f"gate-fuse acquire error path={path!r} mode='write' err={exc!r}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            raise FuseOSError(errno.EIO)
         full_path = self._full_path(path)
-        fd = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        if os.environ.get("GATE_FUSE_DEBUG") == "1":
+            print(f"gate-fuse create path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
+        try:
+            fd = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        except OSError as exc:
+            if os.environ.get("GATE_FUSE_DEBUG") == "1":
+                print(
+                    f"gate-fuse create error path={path!r} full_path={full_path!r} err={exc!r}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            self._release(lock_id)
+            raise FuseOSError(exc.errno)
         with self._fd_lock:
             self._next_fh += 1
             fh = self._next_fh

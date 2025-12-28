@@ -76,6 +76,13 @@ mkdir -p /mnt/gate
 
 4) Open the mounted path in any editor. All writes go through the broker.
 
+### Lock hold cap (hard limit)
+By default, Gate enforces a maximum contiguous hold time of **1 hour** for both read and write locks.
+When the cap is reached, the broker drops the lock and the holder must re‑acquire (returning to the end of the queue).
+
+Configure it with `--max-hold-ms` (CLI) or `GATE_MAX_HOLD_MS` (env). Set it higher or lower to match your
+collaboration style.
+
 ## Build a standalone Gate executable (no Python runtime needed)
 This produces a single Linux executable (`./dist/gate`) that runs the broker and FUSE mount without Python.
 ```
@@ -100,6 +107,7 @@ Optional flags:
 - `--host-mount /path/to/mount` (defaults to `~/.local/state/gate/mounts/<vm-name>/`)
 - `--binary /path/to/gate` (defaults to `which gate`)
 - `--redownload` (force base image re-download)
+- `--max-hold-ms <milliseconds>` (hard cap for read/write lock holds, default: 3600000)
 - `--verbose` (stream logs to console)
 - `--dry-run` (print the commands without executing)
 - `--keep-vm-on-error` (don’t stop the VM if setup fails)

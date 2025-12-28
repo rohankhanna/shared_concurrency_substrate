@@ -10,6 +10,7 @@ DEFAULT_DB_FILENAME = "locks.db"
 DEFAULT_BROKER_HOST = os.environ.get("GATE_BROKER_HOST", "127.0.0.1")
 DEFAULT_BROKER_PORT = int(os.environ.get("GATE_BROKER_PORT", "8787"))
 DEFAULT_LEASE_MS = int(os.environ.get("GATE_LEASE_MS", "3600000"))
+DEFAULT_MAX_HOLD_MS = os.environ.get("GATE_MAX_HOLD_MS", "3600000")
 DEFAULT_ACQUIRE_TIMEOUT_MS = os.environ.get("GATE_ACQUIRE_TIMEOUT_MS")
 
 
@@ -23,6 +24,7 @@ def _parse_timeout(value: str | None) -> int | None:
 
 
 DEFAULT_ACQUIRE_TIMEOUT_MS_VALUE = _parse_timeout(DEFAULT_ACQUIRE_TIMEOUT_MS)
+DEFAULT_MAX_HOLD_MS_VALUE = _parse_timeout(DEFAULT_MAX_HOLD_MS)
 
 
 @dataclass(frozen=True)
@@ -31,4 +33,5 @@ class BrokerConfig:
     host: str = DEFAULT_BROKER_HOST
     port: int = DEFAULT_BROKER_PORT
     lease_ms: int = DEFAULT_LEASE_MS
+    max_hold_ms: int | None = DEFAULT_MAX_HOLD_MS_VALUE
     acquire_timeout_ms: int | None = DEFAULT_ACQUIRE_TIMEOUT_MS_VALUE

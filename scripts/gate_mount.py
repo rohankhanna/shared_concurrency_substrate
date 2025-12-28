@@ -25,6 +25,7 @@ def main() -> None:
     parser.add_argument("--broker-host", default=BrokerConfig().host)
     parser.add_argument("--broker-port", type=int, default=BrokerConfig().port)
     parser.add_argument("--lease-ms", type=int, default=BrokerConfig().lease_ms)
+    parser.add_argument("--max-hold-ms", type=int, default=BrokerConfig().max_hold_ms)
     parser.add_argument("--acquire-timeout-ms", type=int, default=BrokerConfig().acquire_timeout_ms)
     parser.add_argument("--foreground", action="store_true")
     parser.add_argument("--owner", default=None)
@@ -44,6 +45,7 @@ def main() -> None:
         owner=owner,
         lease_ms=args.lease_ms,
         acquire_timeout_ms=args.acquire_timeout_ms,
+        max_hold_ms=args.max_hold_ms,
         foreground=args.foreground,
     )
 

@@ -46,4 +46,4 @@ Then open `/mnt/gate_host_gate-vm` in your editor. Locking and wait behavior is 
 ## Notes
 - The VM auto-clones the repo into `/opt/gate` and installs requirements.
 - Systemd units `gate-broker.service` and `gate-fuse.service` are installed and started on first boot.
-- Environment file: `/etc/gate/gate.env` (uses `GATE_*` variables).
+- Environment file: `/etc/gate/gate.env` (uses `GATE_*` variables, including `GATE_MAX_HOLD_MS`).

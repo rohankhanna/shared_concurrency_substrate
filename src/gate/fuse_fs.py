@@ -21,12 +21,14 @@ class GateFuse(Operations):
         owner: str,
         lease_ms: int,
         acquire_timeout_ms: int | None = None,
+        max_hold_ms: int | None = None,
     ) -> None:
         self.root = os.path.realpath(root)
         self.broker = broker
         self.owner = owner
         self.lease_ms = lease_ms
         self.acquire_timeout_ms = acquire_timeout_ms
+        self.max_hold_ms = max_hold_ms
         self._fd_lock = threading.Lock()
         self._next_fh = 0
         self._handle_locks: Dict[int, str] = {}
@@ -70,6 +72,7 @@ class GateFuse(Operations):
             owner=self.owner,
             timeout_ms=self.acquire_timeout_ms,
             lease_ms=self.lease_ms,
+            max_hold_ms=self.max_hold_ms,
         )
         return payload["lock"]["lock_id"]
 
@@ -310,8 +313,8 @@ class GateFuse(Operations):
 
 
 def mount_fuse(root: str, mountpoint: str, broker: LockBrokerClient, owner: str, lease_ms: int,
-               acquire_timeout_ms: int | None, foreground: bool) -> None:
+               acquire_timeout_ms: int | None, max_hold_ms: int | None, foreground: bool) -> None:
     if os.environ.get("GATE_FUSE_DEBUG") == "1":
         print(f"gate-fuse starting root={root!r} mountpoint={mountpoint!r}", file=sys.stderr, flush=True)
-    fuse = GateFuse(root, broker, owner, lease_ms, acquire_timeout_ms)
+    fuse = GateFuse(root, broker, owner, lease_ms, acquire_timeout_ms, max_hold_ms)
     FUSE(fuse, mountpoint, foreground=foreground)

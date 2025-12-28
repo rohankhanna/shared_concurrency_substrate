@@ -21,6 +21,7 @@ def main() -> None:
     parser.add_argument("--host", default=BrokerConfig().host)
     parser.add_argument("--port", type=int, default=BrokerConfig().port)
     parser.add_argument("--lease-ms", type=int, default=BrokerConfig().lease_ms)
+    parser.add_argument("--max-hold-ms", type=int, default=BrokerConfig().max_hold_ms)
     parser.add_argument("--acquire-timeout-ms", type=int, default=BrokerConfig().acquire_timeout_ms)
     args = parser.parse_args()
 
@@ -29,6 +30,7 @@ def main() -> None:
         host=args.host,
         port=args.port,
         lease_ms=args.lease_ms,
+        max_hold_ms=args.max_hold_ms,
         acquire_timeout_ms=args.acquire_timeout_ms,
     )
     try:

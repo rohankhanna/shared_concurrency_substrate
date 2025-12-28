@@ -7,8 +7,8 @@ These scripts are helpers. Prefer the Gate executable subcommands for most workf
 `gate host-mount`, `gate up`, `gate vm-list`, `gate down`.
 
 ## Runtime
-- `gate_broker.py`: run the lock broker server.
-- `gate_mount.py`: mount the FUSE filesystem view.
+- `gate_broker.py`: run the lock broker server (supports `--max-hold-ms`).
+- `gate_mount.py`: mount the FUSE filesystem view (supports `--max-hold-ms`).
 
 ## VM bundles
 - `build_vm_image.sh`, `run_vm_qemu.sh`: QEMU/KVM flow (prefer `gate up`).

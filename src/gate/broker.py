@@ -56,10 +56,11 @@ class LockBrokerServer:
                     owner = payload.get("owner")
                     timeout_ms = payload.get("timeout_ms", config.acquire_timeout_ms)
                     lease_ms = payload.get("lease_ms", config.lease_ms)
+                    max_hold_ms = payload.get("max_hold_ms", config.max_hold_ms)
                     if not path or mode not in {"read", "write"} or not owner:
                         self._send_json(400, {"error": "invalid request"})
                         return
-                    lock = store.acquire(path, mode, owner, timeout_ms, lease_ms)
+                    lock = store.acquire(path, mode, owner, timeout_ms, lease_ms, max_hold_ms)
                     if lock is None:
                         self._send_json(408, {"status": "timeout"})
                         return

@@ -19,6 +19,7 @@ class LockInfo:
     owner: str
     acquired_at: str
     lease_expires_at: str
+    max_hold_ms: int | None
 
 
 @dataclass(frozen=True)
@@ -50,7 +51,8 @@ class LockStore:
                 mode TEXT NOT NULL,
                 owner TEXT NOT NULL,
                 acquired_at TEXT NOT NULL,
-                lease_expires_at TEXT NOT NULL
+                lease_expires_at TEXT NOT NULL,
+                max_hold_ms INTEGER
             )
             """
         )
@@ -68,6 +70,15 @@ class LockStore:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_queue_path ON queue(path)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_locks_path ON locks(path)")
         self._conn.commit()
+        self._ensure_lock_columns()
+
+    def _ensure_lock_columns(self) -> None:
+        columns = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(locks)").fetchall()
+        }
+        if "max_hold_ms" not in columns:
+            self._conn.execute("ALTER TABLE locks ADD COLUMN max_hold_ms INTEGER")
+            self._conn.commit()
 
     @staticmethod
     def _now() -> datetime:
@@ -79,6 +90,20 @@ class LockStore:
             "DELETE FROM locks WHERE lease_expires_at <= ?",
             (now_iso,),
         )
+        rows = self._conn.execute(
+            "SELECT lock_id, acquired_at, max_hold_ms FROM locks WHERE max_hold_ms IS NOT NULL",
+        ).fetchall()
+        now = self._now()
+        for lock_id, acquired_at, max_hold_ms in rows:
+            if max_hold_ms is None:
+                continue
+            try:
+                acquired = datetime.fromisoformat(acquired_at)
+            except ValueError:
+                continue
+            held_ms = (now - acquired).total_seconds() * 1000
+            if held_ms >= max_hold_ms:
+                self._conn.execute("DELETE FROM locks WHERE lock_id = ?", (lock_id,))
         self._conn.commit()
 
     def _has_write_lock(self, path: str) -> bool:
@@ -118,6 +143,7 @@ class LockStore:
         owner: str,
         timeout_ms: int | None,
         lease_ms: int,
+        max_hold_ms: int | None,
     ) -> LockInfo | None:
         if mode not in {"read", "write"}:
             raise ValueError("mode must be 'read' or 'write'")
@@ -140,8 +166,8 @@ class LockStore:
                     acquired_at = self._now()
                     lease_expires_at = acquired_at + timedelta(milliseconds=lease_ms)
                     self._conn.execute(
-                        "INSERT INTO locks(lock_id, path, mode, owner, acquired_at, lease_expires_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO locks(lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (
                             lock_id,
                             path,
@@ -149,6 +175,7 @@ class LockStore:
                             owner,
                             acquired_at.isoformat(),
                             lease_expires_at.isoformat(),
+                            max_hold_ms,
                         ),
                     )
                     self._conn.execute("DELETE FROM queue WHERE req_id = ?", (req_id,))
@@ -161,6 +188,7 @@ class LockStore:
                         owner=owner,
                         acquired_at=acquired_at.isoformat(),
                         lease_expires_at=lease_expires_at.isoformat(),
+                        max_hold_ms=max_hold_ms,
                     )
 
                 if timeout_ms is not None:
@@ -209,13 +237,27 @@ class LockStore:
 
     def heartbeat(self, lock_id: str, owner: str, lease_ms: int) -> bool:
         row = self._conn.execute(
-            "SELECT owner FROM locks WHERE lock_id = ?",
+            "SELECT owner, acquired_at, max_hold_ms FROM locks WHERE lock_id = ?",
             (lock_id,),
         ).fetchone()
         if row is None:
             return False
         if row[0] != owner:
             raise PermissionError("lock owner mismatch")
+        acquired_at = row[1]
+        max_hold_ms = row[2]
+        if max_hold_ms is not None:
+            try:
+                acquired = datetime.fromisoformat(acquired_at)
+                held_ms = (self._now() - acquired).total_seconds() * 1000
+                if held_ms >= max_hold_ms:
+                    self._conn.execute("DELETE FROM locks WHERE lock_id = ?", (lock_id,))
+                    self._conn.commit()
+                    with self._cond:
+                        self._cond.notify_all()
+                    return False
+            except ValueError:
+                pass
         lease_expires_at = (self._now() + timedelta(milliseconds=lease_ms)).isoformat()
         self._conn.execute(
             "UPDATE locks SET lease_expires_at = ? WHERE lock_id = ?",
@@ -227,7 +269,7 @@ class LockStore:
     def status(self, path: str | None = None) -> dict:
         if path:
             locks = self._conn.execute(
-                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at FROM locks WHERE path = ?",
+                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms FROM locks WHERE path = ?",
                 (path,),
             ).fetchall()
             queue = self._conn.execute(
@@ -236,7 +278,7 @@ class LockStore:
             ).fetchall()
         else:
             locks = self._conn.execute(
-                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at FROM locks",
+                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms FROM locks",
             ).fetchall()
             queue = self._conn.execute(
                 "SELECT req_id, path, mode, owner, requested_at FROM queue ORDER BY req_id",

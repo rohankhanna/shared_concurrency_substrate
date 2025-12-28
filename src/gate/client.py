@@ -48,6 +48,7 @@ class LockBrokerClient:
         owner: str,
         timeout_ms: int | None,
         lease_ms: int,
+        max_hold_ms: int | None = None,
     ) -> dict:
         payload = {
             "path": path,
@@ -56,6 +57,8 @@ class LockBrokerClient:
             "timeout_ms": timeout_ms,
             "lease_ms": lease_ms,
         }
+        if max_hold_ms is not None:
+            payload["max_hold_ms"] = max_hold_ms
         return self._request("POST", "/v1/locks/acquire", payload)
 
     def release(self, lock_id: str, owner: str) -> dict:

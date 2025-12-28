@@ -30,6 +30,7 @@ GATE_MOUNT_DIR=/mnt/gate
 GATE_BROKER_HOST=127.0.0.1
 GATE_BROKER_PORT=8787
 GATE_LEASE_MS=3600000
+GATE_MAX_HOLD_MS=3600000
 """
 
 GATE_BROKER_SERVICE_TEMPLATE = """[Unit]
@@ -40,7 +41,7 @@ After=network.target
 Type=simple
 EnvironmentFile=/etc/gate/gate.env
 WorkingDirectory=${GATE_REPO_DIR}
-ExecStart=/bin/sh -c 'if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate broker --state-dir "${GATE_STATE_DIR}" --host "${GATE_BROKER_HOST}" --port "${GATE_BROKER_PORT}" --lease-ms "${GATE_LEASE_MS}"; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_broker.py" --state-dir "${GATE_STATE_DIR}" --host "${GATE_BROKER_HOST}" --port "${GATE_BROKER_PORT}" --lease-ms "${GATE_LEASE_MS}"; fi'
+ExecStart=/bin/sh -c 'if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate broker --state-dir "${GATE_STATE_DIR}" --host "${GATE_BROKER_HOST}" --port "${GATE_BROKER_PORT}" --lease-ms "${GATE_LEASE_MS}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_broker.py" --state-dir "${GATE_STATE_DIR}" --host "${GATE_BROKER_HOST}" --port "${GATE_BROKER_PORT}" --lease-ms "${GATE_LEASE_MS}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; fi'
 Restart=always
 User=gate
 Group=gate
@@ -60,7 +61,7 @@ EnvironmentFile=/etc/gate/gate.env
 WorkingDirectory=${GATE_REPO_DIR}
 ExecStartPre=/bin/mkdir -p ${GATE_MOUNT_DIR}
 ExecStartPre=/bin/chown gate:gate ${GATE_MOUNT_DIR}
-ExecStart=/bin/sh -c 'if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate mount --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}"; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_mount.py" --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}"; fi'
+ExecStart=/bin/sh -c 'if [ -x /opt/gate/bin/gate ]; then /opt/gate/bin/gate mount --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; else /usr/bin/python3 "${GATE_REPO_DIR}/scripts/gate_mount.py" --root "${GATE_REPO_DIR}" --mount "${GATE_MOUNT_DIR}" --broker-host "${GATE_BROKER_HOST}" --broker-port "${GATE_BROKER_PORT}" --max-hold-ms "${GATE_MAX_HOLD_MS}"; fi'
 Restart=always
 User=gate
 Group=gate
@@ -111,6 +112,7 @@ def _build_parser() -> argparse.ArgumentParser:
     broker.add_argument("--host", default=BrokerConfig().host)
     broker.add_argument("--port", type=int, default=BrokerConfig().port)
     broker.add_argument("--lease-ms", type=int, default=BrokerConfig().lease_ms)
+    broker.add_argument("--max-hold-ms", type=int, default=BrokerConfig().max_hold_ms)
     broker.add_argument("--acquire-timeout-ms", type=int, default=BrokerConfig().acquire_timeout_ms)
 
     mount = subparsers.add_parser("mount", help="Mount the Gate FUSE filesystem")
@@ -119,6 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mount.add_argument("--broker-host", default=BrokerConfig().host)
     mount.add_argument("--broker-port", type=int, default=BrokerConfig().port)
     mount.add_argument("--lease-ms", type=int, default=BrokerConfig().lease_ms)
+    mount.add_argument("--max-hold-ms", type=int, default=BrokerConfig().max_hold_ms)
     mount.add_argument("--acquire-timeout-ms", type=int, default=BrokerConfig().acquire_timeout_ms)
     mount.add_argument("--foreground", action="store_true")
     mount.add_argument("--owner", default=None)
@@ -179,6 +182,7 @@ def _build_parser() -> argparse.ArgumentParser:
     up.add_argument("--ssh-timeout", type=int, default=180)
     up.add_argument("--memory", default="4096")
     up.add_argument("--cpus", default="2")
+    up.add_argument("--max-hold-ms", type=int, default=BrokerConfig().max_hold_ms)
     up.add_argument("--skip-build", action="store_true")
     up.add_argument("--skip-host-mount", action="store_true")
     up.add_argument("--verbose", action="store_true")
@@ -506,6 +510,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             host=args.host,
             port=args.port,
             lease_ms=args.lease_ms,
+            max_hold_ms=args.max_hold_ms,
             acquire_timeout_ms=args.acquire_timeout_ms,
         )
         server = LockBrokerServer(config)
@@ -527,6 +532,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             owner=owner,
             lease_ms=args.lease_ms,
             acquire_timeout_ms=args.acquire_timeout_ms,
+            max_hold_ms=args.max_hold_ms,
             foreground=args.foreground,
         )
         return
@@ -968,6 +974,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     "gate@127.0.0.1",
                     _ssh_shell_command(
                         "nohup /opt/gate/bin/gate broker --state-dir /var/lib/gate --host 127.0.0.1 --port 8787 "
+                        f"--max-hold-ms {args.max_hold_ms} "
                         "> /var/lib/gate/broker.log 2>&1 &"
                     ),
                 ),
@@ -984,6 +991,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                         "nohup /opt/gate/bin/gate mount "
                         f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
                         "--broker-host 127.0.0.1 --broker-port 8787 "
+                        f"--max-hold-ms {args.max_hold_ms} "
                         "> /var/lib/gate/fuse.log 2>&1 &"
                     ),
                 ),

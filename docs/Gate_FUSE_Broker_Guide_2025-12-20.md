@@ -54,7 +54,8 @@ If you already have a repo on the host and want to mirror it into the VM:
 ## Notes
 - Reads will wait if a writer is queued ahead (strict FIFO).
 - Locks are global across runs (system-level state).
-- Environment variables use `GATE_*` (e.g., `GATE_STATE_DIR`).
+- Environment variables use `GATE_*` (e.g., `GATE_STATE_DIR`, `GATE_MAX_HOLD_MS`).
+- `GATE_MAX_HOLD_MS` caps how long a read/write lock can be held contiguously (default: 3600000).
 
 ## VM setup bundle (QEMU/KVM)
 For a fully packaged VM workflow, see:

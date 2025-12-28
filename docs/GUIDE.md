@@ -22,6 +22,7 @@ python3 scripts/gate_broker.py --state-dir /var/lib/gate --host 127.0.0.1 --port
 mkdir -p /mnt/gate
 python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-host 127.0.0.1 --broker-port 8787 --foreground
 ```
+Add `--max-hold-ms` (or set `GATE_MAX_HOLD_MS`) to change the default 1-hour lock cap.
 
 ## VM setup (recommended for stronger enforcement)
 Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`. Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gate vm-list` and `gate down`.
@@ -34,7 +35,8 @@ Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key
 ## Config defaults
 - State dir: `/var/lib/gate`
 - Broker host/port: `127.0.0.1:8787`
-- Env vars: `GATE_STATE_DIR`, `GATE_BROKER_HOST`, `GATE_BROKER_PORT`
+- Max hold cap: `GATE_MAX_HOLD_MS` (default: 3600000; applies to read/write locks)
+- Env vars: `GATE_STATE_DIR`, `GATE_BROKER_HOST`, `GATE_BROKER_PORT`, `GATE_MAX_HOLD_MS`
 
 ## Roadmap
 - Replace SSHFS with VirtioFS/NFS for performance.

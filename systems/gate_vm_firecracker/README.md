@@ -50,4 +50,4 @@ sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ## Notes
 - Firecracker uses a tap device with DHCP provided by dnsmasq.
 - The VM auto-clones the repo into `/opt/gate` and enables `gate-broker.service` + `gate-fuse.service`.
-- Environment file: `/etc/gate/gate.env` (uses `GATE_*` variables).
+- Environment file: `/etc/gate/gate.env` (uses `GATE_*` variables, including `GATE_MAX_HOLD_MS`).

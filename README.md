@@ -1,7 +1,5 @@
 # Shared Concurrency Substrate (Gate + FUSE)
 
-Date: 2025-12-28
-
 ## What this is
 Gate provides a broker-enforced filesystem view that applies strict FIFO read/write locking to any editor or automation. You edit a mounted view, and the broker serializes access so writers cannot be skipped and readers block behind queued writers.
 

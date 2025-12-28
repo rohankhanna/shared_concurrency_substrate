@@ -24,3 +24,5 @@ These scripts are helpers. Prefer the Gate executable subcommands for most workf
 
 ## Tests
 - `smoke_test_fifo_sshfs.sh`: end-to-end FIFO blocking check over SSHFS (NFS is recommended for host editing).
+- `lock_demo_a.py`: lock holder for manual two-terminal demo.
+- `lock_demo_b.py`: lock waiter for manual two-terminal demo.

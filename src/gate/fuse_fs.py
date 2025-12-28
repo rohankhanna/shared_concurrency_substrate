@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import os
+import sys
 import threading
 from typing import Dict
 
@@ -32,20 +33,34 @@ class GateFuse(Operations):
         self._handle_paths: Dict[int, str] = {}
         self._handle_fds: Dict[int, int] = {}
 
+    def _finalize_handle(self, fh: int, path: str, reason: str) -> None:
+        with self._fd_lock:
+            lock_id = self._handle_locks.pop(fh, None)
+            self._handle_paths.pop(fh, None)
+            fd = self._handle_fds.pop(fh, None)
+        if os.environ.get("GATE_FUSE_DEBUG") == "1":
+            print(
+                f"gate-fuse finalize reason={reason} path={path!r} fh={fh} lock_id={lock_id!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+        if fd is not None:
+            os.close(fd)
+        if lock_id:
+            self._release(lock_id)
+
     @staticmethod
     def _is_write_flags(flags: int) -> bool:
         write_flags = os.O_WRONLY | os.O_RDWR | os.O_TRUNC | os.O_APPEND
         return (flags & write_flags) != 0
 
     def _full_path(self, path: str) -> str:
-        if path.startswith("/"):
-            path = path[1:]
+        path = path.lstrip("/")
         return os.path.join(self.root, path)
 
     @staticmethod
     def _lock_key(path: str) -> str:
-        if path.startswith("/"):
-            path = path[1:]
+        path = path.lstrip("/")
         return path or "."
 
     def _acquire(self, path: str, mode: str) -> str:
@@ -95,7 +110,14 @@ class GateFuse(Operations):
 
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
-        st = os.lstat(full_path)
+        if os.environ.get("GATE_FUSE_DEBUG") == "1":
+            print(f"gate-fuse getattr path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
+        try:
+            st = os.lstat(full_path)
+        except FileNotFoundError:
+            if os.environ.get("GATE_FUSE_DEBUG") == "1":
+                print(f"gate-fuse getattr ENOENT path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
+            raise
         return {key: getattr(st, key) for key in (
             "st_atime",
             "st_ctime",
@@ -109,6 +131,8 @@ class GateFuse(Operations):
 
     def readdir(self, path, fh):
         full_path = self._full_path(path)
+        if os.environ.get("GATE_FUSE_DEBUG") == "1":
+            print(f"gate-fuse readdir path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
         dirents = [".", ".."]
         if os.path.isdir(full_path):
             dirents.extend(os.listdir(full_path))
@@ -195,9 +219,25 @@ class GateFuse(Operations):
 
     def open(self, path, flags):
         mode = "write" if self._is_write_flags(flags) else "read"
-        lock_id = self._acquire(self._lock_key(path), mode)
+        try:
+            lock_id = self._acquire(self._lock_key(path), mode)
+        except Exception as exc:
+            if os.environ.get("GATE_FUSE_DEBUG") == "1":
+                print(
+                    f"gate-fuse acquire error path={path!r} mode={mode} err={exc!r}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            raise
         full_path = self._full_path(path)
-        fd = os.open(full_path, flags)
+        if os.environ.get("GATE_FUSE_DEBUG") == "1":
+            print(f"gate-fuse open path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
+        try:
+            fd = os.open(full_path, flags)
+        except FileNotFoundError:
+            if os.environ.get("GATE_FUSE_DEBUG") == "1":
+                print(f"gate-fuse open ENOENT path={path!r} full_path={full_path!r}", file=sys.stderr, flush=True)
+            raise
         with self._fd_lock:
             self._next_fh += 1
             fh = self._next_fh
@@ -219,17 +259,20 @@ class GateFuse(Operations):
         return fh
 
     def read(self, path, length, offset, fh):
-        fd = self._handle_fds.get(fh)
+        with self._fd_lock:
+            fd = self._handle_fds.get(fh)
         if fd is None:
             raise FuseOSError(errno.EBADF)
         os.lseek(fd, offset, os.SEEK_SET)
         return os.read(fd, length)
 
     def write(self, path, buf, offset, fh):
-        lock_id = self._handle_locks.get(fh)
+        with self._fd_lock:
+            lock_id = self._handle_locks.get(fh)
         if lock_id:
             self._heartbeat(lock_id)
-        fd = self._handle_fds.get(fh)
+        with self._fd_lock:
+            fd = self._handle_fds.get(fh)
         if fd is None:
             raise FuseOSError(errno.EBADF)
         os.lseek(fd, offset, os.SEEK_SET)
@@ -245,23 +288,22 @@ class GateFuse(Operations):
             self._release(lock_id)
 
     def flush(self, path, fh):
-        lock_id = self._handle_locks.get(fh)
+        if os.environ.get("GATE_RELEASE_ON_FLUSH", "1") == "1":
+            self._finalize_handle(fh, path, reason="flush")
+            return 0
+        with self._fd_lock:
+            lock_id = self._handle_locks.get(fh)
         if lock_id:
             self._heartbeat(lock_id)
         return 0
 
     def release(self, path, fh):
-        lock_id = self._handle_locks.pop(fh, None)
-        self._handle_paths.pop(fh, None)
-        fd = self._handle_fds.pop(fh, None)
-        if fd is not None:
-            os.close(fd)
-        if lock_id:
-            self._release(lock_id)
+        self._finalize_handle(fh, path, reason="release")
         return 0
 
     def fsync(self, path, fdatasync, fh):
-        lock_id = self._handle_locks.get(fh)
+        with self._fd_lock:
+            lock_id = self._handle_locks.get(fh)
         if lock_id:
             self._heartbeat(lock_id)
         return 0
@@ -269,5 +311,7 @@ class GateFuse(Operations):
 
 def mount_fuse(root: str, mountpoint: str, broker: LockBrokerClient, owner: str, lease_ms: int,
                acquire_timeout_ms: int | None, foreground: bool) -> None:
+    if os.environ.get("GATE_FUSE_DEBUG") == "1":
+        print(f"gate-fuse starting root={root!r} mountpoint={mountpoint!r}", file=sys.stderr, flush=True)
     fuse = GateFuse(root, broker, owner, lease_ms, acquire_timeout_ms)
-    FUSE(fuse, mountpoint, foreground=foreground, nothreads=True)
+    FUSE(fuse, mountpoint, foreground=foreground)

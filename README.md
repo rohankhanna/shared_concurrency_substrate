@@ -144,6 +144,9 @@ Check the installed binary version:
 ./dist/gate --version
 ```
 
+## Tests
+- Manual lock demo scripts: `tests/manual/lock_demo_a.py` and `tests/manual/lock_demo_b.py`.
+
 Stop a VM and list known VMs:
 ```
 ./dist/gate vm-list

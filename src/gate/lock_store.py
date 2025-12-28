@@ -20,6 +20,7 @@ class LockInfo:
     acquired_at: str
     lease_expires_at: str
     max_hold_ms: int | None
+    hold_count: int
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,8 @@ class LockStore:
                 owner TEXT NOT NULL,
                 acquired_at TEXT NOT NULL,
                 lease_expires_at TEXT NOT NULL,
-                max_hold_ms INTEGER
+                max_hold_ms INTEGER,
+                hold_count INTEGER NOT NULL DEFAULT 1
             )
             """
         )
@@ -78,6 +80,11 @@ class LockStore:
         }
         if "max_hold_ms" not in columns:
             self._conn.execute("ALTER TABLE locks ADD COLUMN max_hold_ms INTEGER")
+            self._conn.commit()
+        if "hold_count" not in columns:
+            self._conn.execute(
+                "ALTER TABLE locks ADD COLUMN hold_count INTEGER NOT NULL DEFAULT 1"
+            )
             self._conn.commit()
 
     @staticmethod
@@ -148,6 +155,64 @@ class LockStore:
         if mode not in {"read", "write"}:
             raise ValueError("mode must be 'read' or 'write'")
 
+        reentrant = self._conn.execute(
+            "SELECT lock_id, mode, owner, acquired_at, lease_expires_at, max_hold_ms, hold_count "
+            "FROM locks WHERE path = ? AND owner = ? LIMIT 1",
+            (path, owner),
+        ).fetchone()
+        if reentrant is not None:
+            (
+                lock_id,
+                existing_mode,
+                existing_owner,
+                acquired_at,
+                lease_expires_at,
+                existing_max_hold,
+                hold_count,
+            ) = reentrant
+            can_reenter = existing_mode == "write" or existing_mode == mode
+            if can_reenter:
+                new_lease = (self._now() + timedelta(milliseconds=lease_ms)).isoformat()
+                self._conn.execute(
+                    "UPDATE locks SET lease_expires_at = ?, hold_count = hold_count + 1 WHERE lock_id = ?",
+                    (new_lease, lock_id),
+                )
+                self._conn.commit()
+                return LockInfo(
+                    lock_id=lock_id,
+                    path=path,
+                    mode=existing_mode,
+                    owner=existing_owner,
+                    acquired_at=acquired_at,
+                    lease_expires_at=new_lease,
+                    max_hold_ms=existing_max_hold,
+                    hold_count=hold_count + 1,
+                )
+
+            if existing_mode == "read" and mode == "write":
+                other = self._conn.execute(
+                    "SELECT 1 FROM locks WHERE path = ? AND owner != ? LIMIT 1",
+                    (path, owner),
+                ).fetchone()
+                if other is None:
+                    new_lease = (self._now() + timedelta(milliseconds=lease_ms)).isoformat()
+                    self._conn.execute(
+                        "UPDATE locks SET mode = 'write', lease_expires_at = ?, hold_count = hold_count + 1 "
+                        "WHERE lock_id = ?",
+                        (new_lease, lock_id),
+                    )
+                    self._conn.commit()
+                    return LockInfo(
+                        lock_id=lock_id,
+                        path=path,
+                        mode="write",
+                        owner=existing_owner,
+                        acquired_at=acquired_at,
+                        lease_expires_at=new_lease,
+                        max_hold_ms=existing_max_hold,
+                        hold_count=hold_count + 1,
+                    )
+
         requested_at = self._now().isoformat()
         cur = self._conn.cursor()
         cur.execute(
@@ -166,8 +231,8 @@ class LockStore:
                     acquired_at = self._now()
                     lease_expires_at = acquired_at + timedelta(milliseconds=lease_ms)
                     self._conn.execute(
-                        "INSERT INTO locks(lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO locks(lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms, hold_count) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             lock_id,
                             path,
@@ -176,6 +241,7 @@ class LockStore:
                             acquired_at.isoformat(),
                             lease_expires_at.isoformat(),
                             max_hold_ms,
+                            1,
                         ),
                     )
                     self._conn.execute("DELETE FROM queue WHERE req_id = ?", (req_id,))
@@ -189,6 +255,7 @@ class LockStore:
                         acquired_at=acquired_at.isoformat(),
                         lease_expires_at=lease_expires_at.isoformat(),
                         max_hold_ms=max_hold_ms,
+                        hold_count=1,
                     )
 
                 if timeout_ms is not None:
@@ -222,13 +289,23 @@ class LockStore:
 
     def release(self, lock_id: str, owner: str) -> bool:
         row = self._conn.execute(
-            "SELECT owner FROM locks WHERE lock_id = ?",
+            "SELECT owner, hold_count FROM locks WHERE lock_id = ?",
             (lock_id,),
         ).fetchone()
         if row is None:
             return False
         if row[0] != owner:
             raise PermissionError("lock owner mismatch")
+        hold_count = row[1] or 1
+        if hold_count > 1:
+            self._conn.execute(
+                "UPDATE locks SET hold_count = hold_count - 1 WHERE lock_id = ?",
+                (lock_id,),
+            )
+            self._conn.commit()
+            with self._cond:
+                self._cond.notify_all()
+            return True
         self._conn.execute("DELETE FROM locks WHERE lock_id = ?", (lock_id,))
         self._conn.commit()
         with self._cond:
@@ -269,7 +346,8 @@ class LockStore:
     def status(self, path: str | None = None) -> dict:
         if path:
             locks = self._conn.execute(
-                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms FROM locks WHERE path = ?",
+                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms, hold_count "
+                "FROM locks WHERE path = ?",
                 (path,),
             ).fetchall()
             queue = self._conn.execute(
@@ -278,7 +356,8 @@ class LockStore:
             ).fetchall()
         else:
             locks = self._conn.execute(
-                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms FROM locks",
+                "SELECT lock_id, path, mode, owner, acquired_at, lease_expires_at, max_hold_ms, hold_count "
+                "FROM locks",
             ).fetchall()
             queue = self._conn.execute(
                 "SELECT req_id, path, mode, owner, requested_at FROM queue ORDER BY req_id",

@@ -8,7 +8,7 @@ import sys
 import threading
 from typing import Dict
 
-from fuse import FUSE, FuseOSError, Operations
+from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 
 from .client import LockBrokerClient
 
@@ -34,12 +34,14 @@ class GateFuse(Operations):
         self._handle_locks: Dict[int, str] = {}
         self._handle_paths: Dict[int, str] = {}
         self._handle_fds: Dict[int, int] = {}
+        self._handle_owners: Dict[int, str] = {}
 
     def _finalize_handle(self, fh: int, path: str, reason: str) -> None:
         with self._fd_lock:
             lock_id = self._handle_locks.pop(fh, None)
             self._handle_paths.pop(fh, None)
             fd = self._handle_fds.pop(fh, None)
+            owner = self._handle_owners.pop(fh, None)
         if os.environ.get("GATE_FUSE_DEBUG") == "1":
             print(
                 f"gate-fuse finalize reason={reason} path={path!r} fh={fh} lock_id={lock_id!r}",
@@ -49,7 +51,7 @@ class GateFuse(Operations):
         if fd is not None:
             os.close(fd)
         if lock_id:
-            self._release(lock_id)
+            self._release(lock_id, owner=owner)
 
     @staticmethod
     def _is_write_flags(flags: int) -> bool:
@@ -65,40 +67,42 @@ class GateFuse(Operations):
         path = path.lstrip("/")
         return path or "."
 
-    def _acquire(self, path: str, mode: str) -> str:
+    def _acquire(self, path: str, mode: str) -> tuple[str, str]:
+        owner = self._owner_for_request()
         payload = self.broker.acquire(
             path=path,
             mode=mode,
-            owner=self.owner,
+            owner=owner,
             timeout_ms=self.acquire_timeout_ms,
             lease_ms=self.lease_ms,
             max_hold_ms=self.max_hold_ms,
         )
-        return payload["lock"]["lock_id"]
+        return payload["lock"]["lock_id"], owner
 
-    def _release(self, lock_id: str) -> None:
-        self.broker.release(lock_id=lock_id, owner=self.owner)
+    def _release(self, lock_id: str, owner: str | None = None) -> None:
+        self.broker.release(lock_id=lock_id, owner=owner or self.owner)
 
-    def _heartbeat(self, lock_id: str) -> None:
-        self.broker.heartbeat(lock_id=lock_id, owner=self.owner, lease_ms=self.lease_ms)
+    def _heartbeat(self, lock_id: str, owner: str | None = None) -> None:
+        self.broker.heartbeat(lock_id=lock_id, owner=owner or self.owner, lease_ms=self.lease_ms)
 
-    def _acquire_multi(self, paths: list[str]) -> list[str]:
-        lock_ids = []
+    def _owner_for_request(self) -> str:
+        try:
+            _, _, pid = fuse_get_context()
+        except Exception:
+            pid = None
+        if pid is None:
+            return self.owner
+        return f"{self.owner}:{pid}"
+
+    def _acquire_multi(self, paths: list[str]) -> list[tuple[str, str]]:
+        lock_ids: list[tuple[str, str]] = []
         for path in sorted(paths):
             lock_ids.append(self._acquire(path, "write"))
         return lock_ids
 
-    def _release_multi(self, lock_ids: list[str]) -> None:
-        for lock_id in reversed(lock_ids):
-            self._release(lock_id)
-
-    def _borrow_lock(self, path: str) -> str | None:
-        key = self._lock_key(path)
-        with self._fd_lock:
-            for fh, fh_path in self._handle_paths.items():
-                if fh_path == key:
-                    return self._handle_locks.get(fh)
-        return None
+    def _release_multi(self, lock_ids: list[tuple[str, str]]) -> None:
+        for lock_id, owner in reversed(lock_ids):
+            self._release(lock_id, owner=owner)
 
     def access(self, path, mode):
         full_path = self._full_path(path)
@@ -106,26 +110,18 @@ class GateFuse(Operations):
             raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
-        lock_id = self._borrow_lock(path)
-        if lock_id is None:
-            lock_id = self._acquire(self._lock_key(path), "write")
-            try:
-                return os.chmod(self._full_path(path), mode)
-            finally:
-                self._release(lock_id)
-        self._heartbeat(lock_id)
-        return os.chmod(self._full_path(path), mode)
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        try:
+            return os.chmod(self._full_path(path), mode)
+        finally:
+            self._release(lock_id, owner=owner)
 
     def chown(self, path, uid, gid):
-        lock_id = self._borrow_lock(path)
-        if lock_id is None:
-            lock_id = self._acquire(self._lock_key(path), "write")
-            try:
-                return os.chown(self._full_path(path), uid, gid)
-            finally:
-                self._release(lock_id)
-        self._heartbeat(lock_id)
-        return os.chown(self._full_path(path), uid, gid)
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        try:
+            return os.chown(self._full_path(path), uid, gid)
+        finally:
+            self._release(lock_id, owner=owner)
 
     def getattr(self, path, fh=None):
         full_path = self._full_path(path)
@@ -169,25 +165,25 @@ class GateFuse(Operations):
         return pathname
 
     def mknod(self, path, mode, dev):
-        lock_id = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
         try:
             return os.mknod(self._full_path(path), mode, dev)
         finally:
-            self._release(lock_id)
+            self._release(lock_id, owner=owner)
 
     def rmdir(self, path):
-        lock_id = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
         try:
             return os.rmdir(self._full_path(path))
         finally:
-            self._release(lock_id)
+            self._release(lock_id, owner=owner)
 
     def mkdir(self, path, mode):
-        lock_id = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
         try:
             return os.mkdir(self._full_path(path), mode)
         finally:
-            self._release(lock_id)
+            self._release(lock_id, owner=owner)
 
     def statfs(self, path):
         full_path = self._full_path(path)
@@ -206,11 +202,11 @@ class GateFuse(Operations):
         )}
 
     def unlink(self, path):
-        lock_id = self._acquire(self._lock_key(path), "write")
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
         try:
             return os.unlink(self._full_path(path))
         finally:
-            self._release(lock_id)
+            self._release(lock_id, owner=owner)
 
     def symlink(self, name, target):
         lock_ids = self._acquire_multi([self._lock_key(name), self._lock_key(target)])
@@ -234,20 +230,16 @@ class GateFuse(Operations):
             self._release_multi(lock_ids)
 
     def utimens(self, path, times=None):
-        lock_id = self._borrow_lock(path)
-        if lock_id is None:
-            lock_id = self._acquire(self._lock_key(path), "write")
-            try:
-                return os.utime(self._full_path(path), times)
-            finally:
-                self._release(lock_id)
-        self._heartbeat(lock_id)
-        return os.utime(self._full_path(path), times)
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        try:
+            return os.utime(self._full_path(path), times)
+        finally:
+            self._release(lock_id, owner=owner)
 
     def open(self, path, flags):
         mode = "write" if self._is_write_flags(flags) else "read"
         try:
-            lock_id = self._acquire(self._lock_key(path), mode)
+            lock_id, owner = self._acquire(self._lock_key(path), mode)
         except Exception as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
                 print(
@@ -276,11 +268,12 @@ class GateFuse(Operations):
             self._handle_locks[fh] = lock_id
             self._handle_paths[fh] = self._lock_key(path)
             self._handle_fds[fh] = fd
+            self._handle_owners[fh] = owner
         return fh
 
     def create(self, path, mode, fi=None):
         try:
-            lock_id = self._acquire(self._lock_key(path), "write")
+            lock_id, owner = self._acquire(self._lock_key(path), "write")
         except Exception as exc:
             if os.environ.get("GATE_FUSE_DEBUG") == "1":
                 print(
@@ -309,6 +302,7 @@ class GateFuse(Operations):
             self._handle_locks[fh] = lock_id
             self._handle_paths[fh] = self._lock_key(path)
             self._handle_fds[fh] = fd
+            self._handle_owners[fh] = owner
         return fh
 
     def read(self, path, length, offset, fh):
@@ -322,8 +316,9 @@ class GateFuse(Operations):
     def write(self, path, buf, offset, fh):
         with self._fd_lock:
             lock_id = self._handle_locks.get(fh)
+            owner = self._handle_owners.get(fh)
         if lock_id:
-            self._heartbeat(lock_id)
+            self._heartbeat(lock_id, owner=owner)
         with self._fd_lock:
             fd = self._handle_fds.get(fh)
         if fd is None:
@@ -332,20 +327,13 @@ class GateFuse(Operations):
         return os.write(fd, buf)
 
     def truncate(self, path, length, fh=None):
-        lock_id = self._borrow_lock(path)
-        if lock_id is None:
-            lock_id = self._acquire(self._lock_key(path), "write")
-            try:
-                full_path = self._full_path(path)
-                with open(full_path, "r+b") as f:
-                    f.truncate(length)
-            finally:
-                self._release(lock_id)
-            return
-        self._heartbeat(lock_id)
-        full_path = self._full_path(path)
-        with open(full_path, "r+b") as f:
-            f.truncate(length)
+        lock_id, owner = self._acquire(self._lock_key(path), "write")
+        try:
+            full_path = self._full_path(path)
+            with open(full_path, "r+b") as f:
+                f.truncate(length)
+        finally:
+            self._release(lock_id, owner=owner)
 
     def flush(self, path, fh):
         if os.environ.get("GATE_RELEASE_ON_FLUSH", "1") == "1":
@@ -353,8 +341,9 @@ class GateFuse(Operations):
             return 0
         with self._fd_lock:
             lock_id = self._handle_locks.get(fh)
+            owner = self._handle_owners.get(fh)
         if lock_id:
-            self._heartbeat(lock_id)
+            self._heartbeat(lock_id, owner=owner)
         return 0
 
     def release(self, path, fh):
@@ -364,8 +353,9 @@ class GateFuse(Operations):
     def fsync(self, path, fdatasync, fh):
         with self._fd_lock:
             lock_id = self._handle_locks.get(fh)
+            owner = self._handle_owners.get(fh)
         if lock_id:
-            self._heartbeat(lock_id)
+            self._heartbeat(lock_id, owner=owner)
         return 0
 
 

@@ -990,7 +990,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             if args.host_mount_method == "nfs":
                 export_line = (
                     "/mnt/gate 10.0.2.2/32"
-                    "(rw,sync,no_subtree_check,no_root_squash,fsid=0,insecure)"
+                    "(rw,sync,no_subtree_check,no_root_squash,insecure)"
                 )
                 _run_logged(
                     _ssh_command(

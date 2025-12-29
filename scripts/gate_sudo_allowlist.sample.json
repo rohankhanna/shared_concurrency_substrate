@@ -1,0 +1,14 @@
+{
+  "allowed_remotes": [
+    "127.0.0.1:/mnt/gate"
+  ],
+  "allowed_nfs_ports": [
+    2049
+  ],
+  "allowed_mount_prefixes": [
+    "/home/YOUR_USER/.local/state/gate/mounts"
+  ],
+  "allowed_umount_prefixes": [
+    "/home/YOUR_USER/.local/state/gate/mounts"
+  ]
+}

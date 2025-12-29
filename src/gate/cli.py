@@ -264,12 +264,24 @@ def _require_nfs_mount_helper() -> None:
         raise RuntimeError("NFS mount helper not found (install nfs-common)")
 
 
+def _sudo_prefix() -> list[str]:
+    override = os.environ.get("GATE_SUDO_CMD")
+    if override:
+        return shlex.split(override)
+    return ["sudo"]
+
+
 def _maybe_sudo(cmd: list[str]) -> list[str]:
     if os.geteuid() == 0:
         return cmd
-    if shutil.which("sudo") is None:
-        raise RuntimeError("sudo not found (required for host mount)")
-    return ["sudo", *cmd]
+    prefix = _sudo_prefix()
+    if not prefix:
+        raise RuntimeError("GATE_SUDO_CMD resolved to an empty command")
+    if shutil.which(prefix[0]) is None:
+        raise RuntimeError(
+            f"Sudo command not found (required for host mount): {prefix[0]}"
+        )
+    return [*prefix, *cmd]
 
 
 def _run(cmd: list[str]) -> None:
@@ -428,9 +440,11 @@ def _unmount_path(path: Path) -> None:
     try:
         _run(["umount", str(path)])
     except subprocess.CalledProcessError:
-        if shutil.which("sudo"):
-            _run(["sudo", "umount", str(path)])
+        try:
+            _run(_maybe_sudo(["umount", str(path)]))
             return
+        except RuntimeError:
+            pass
         raise
 
 

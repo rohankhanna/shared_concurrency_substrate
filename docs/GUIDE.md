@@ -39,6 +39,11 @@ When using NFS, the FUSE mount must allow other users: `user_allow_other` in `/e
 
 If your terminal stops echoing after `gate up`, run `stty echo`.
 
+## Optional: constrained sudo wrapper (host mounts)
+To avoid repeated sudo prompts for NFS mount/unmount, you can install the
+constrained wrapper and point Gate at it with `GATE_SUDO_CMD`. See
+`docs/SUDO_WRAPPER.md` for setup and allowlist details.
+
 ## FIFO smoke test (over SSHFS)
 ```
 ./scripts/smoke_test_fifo_sshfs.sh /mnt/gate_host
@@ -49,6 +54,7 @@ If your terminal stops echoing after `gate up`, run `stty echo`.
 - Broker host/port: `127.0.0.1:8787`
 - Max hold cap: `GATE_MAX_HOLD_MS` (default: 3600000; applies to read/write locks)
 - Env vars: `GATE_STATE_DIR`, `GATE_BROKER_HOST`, `GATE_BROKER_PORT`, `GATE_MAX_HOLD_MS`
+- Optional host sudo prefix: `GATE_SUDO_CMD`
 
 ## Roadmap
 - Replace SSHFS with VirtioFS/NFS for performance.

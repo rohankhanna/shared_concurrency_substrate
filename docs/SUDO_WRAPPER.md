@@ -14,17 +14,17 @@ allow in a root-owned config file.
 
 ## Install the wrapper
 ```
-sudo install -m 0755 ./scripts/sudo_allow.py /usr/local/bin/sudo-allow
+sudo install -m 0755 ./scripts/terminal_sudo_guard.py /usr/local/bin/terminal-sudo-guard
 ```
 
 ## Configure the allowlist
 1) Create the config directory and seed file:
 ```
-sudo mkdir -p /etc/sudo-allow
-sudo install -m 0644 ./scripts/sudo_allowlist.sample.json /etc/sudo-allow/allowlist.json
+sudo mkdir -p /etc/terminal-sudo-guard
+sudo install -m 0644 ./scripts/terminal_sudo_guard_allowlist.sample.json /etc/terminal-sudo-guard/allowlist.json
 ```
 
-2) Edit `/etc/sudo-allow/allowlist.json` to match your setup:
+2) Edit `/etc/terminal-sudo-guard/allowlist.json` to match your setup:
 - Replace `YOUR_USER` with your actual username.
 - Add any additional NFS remotes you plan to mount (e.g., Firecracker guest IPs).
 - Keep the mount prefixes as narrow as possible.
@@ -42,18 +42,18 @@ Example:
 ## Add a sudoers entry (NOPASSWD for the wrapper only)
 Edit a dedicated sudoers drop-in:
 ```
-sudo visudo -f /etc/sudoers.d/sudo-allow
+sudo visudo -f /etc/sudoers.d/terminal-sudo-guard
 ```
 
 Add a single line (replace `your_user` as needed):
 ```
-your_user ALL=(root) NOPASSWD: /usr/local/bin/sudo-allow
+your_user ALL=(root) NOPASSWD: /usr/local/bin/terminal-sudo-guard
 ```
 
 ## Use it with Gate
 Set the command prefix Gate should use when it needs sudo for host mounts:
 ```
-export GATE_SUDO_CMD="sudo /usr/local/bin/sudo-allow"
+export GATE_SUDO_CMD="sudo /usr/local/bin/terminal-sudo-guard"
 ```
 
 Now `gate up` and `gate host-mount` can mount/unmount NFS without prompting,
@@ -61,11 +61,11 @@ as long as the mount matches the allowlist.
 
 Optional: override the allowlist path:
 ```
-export SUDO_ALLOWLIST_PATH=/etc/sudo-allow/allowlist.json
+export SUDO_ALLOWLIST_PATH=/etc/terminal-sudo-guard/allowlist.json
 ```
 
 ## Troubleshooting
-- If you see “remote not in allowlist”, update `/etc/sudo-allow/allowlist.json`.
+- If you see “remote not in allowlist”, update `/etc/terminal-sudo-guard/allowlist.json`.
 - If you see “path not under an allowed prefix”, adjust the allowed mount prefixes.
 - If it says the allowlist is writable by group/other, fix permissions:
-  `sudo chmod 0644 /etc/sudo-allow/allowlist.json`.
+  `sudo chmod 0644 /etc/terminal-sudo-guard/allowlist.json`.

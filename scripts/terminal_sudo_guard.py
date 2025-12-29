@@ -6,7 +6,8 @@ import stat
 import sys
 from pathlib import Path
 
-DEFAULT_CONFIG_PATH = Path("/etc/sudo-allow/allowlist.json")
+DEFAULT_CONFIG_PATH = Path("/etc/terminal-sudo-guard/allowlist.json")
+LEGACY_CONFIG_PATH = Path("/etc/sudo-allow/allowlist.json")
 ENV_CONFIG_PATH = "SUDO_ALLOWLIST_PATH"
 PROG = Path(sys.argv[0]).name
 
@@ -29,6 +30,10 @@ def _config_path() -> Path:
     override = os.environ.get(ENV_CONFIG_PATH)
     if override:
         return Path(override)
+    if DEFAULT_CONFIG_PATH.exists():
+        return DEFAULT_CONFIG_PATH
+    if LEGACY_CONFIG_PATH.exists():
+        return LEGACY_CONFIG_PATH
     return DEFAULT_CONFIG_PATH
 
 

@@ -6,29 +6,39 @@ import stat
 import sys
 from pathlib import Path
 
-CONFIG_PATH = Path("/etc/gate/sudo-allowlist.json")
+DEFAULT_CONFIG_PATH = Path("/etc/sudo-allow/allowlist.json")
+ENV_CONFIG_PATH = "SUDO_ALLOWLIST_PATH"
+PROG = Path(sys.argv[0]).name
 
 
 def _fail(message: str, code: int = 1) -> None:
-    print(f"gate-sudo: {message}", file=sys.stderr)
+    print(f"{PROG}: {message}", file=sys.stderr)
     sys.exit(code)
 
 
 def _usage() -> None:
     print(
         "Usage:\n"
-        "  gate-sudo mount -t nfs4 -o vers=4,proto=tcp,port=<port> <remote> <mount>\n"
-        "  gate-sudo umount <mount>\n",
+        f"  {PROG} mount -t nfs4 -o vers=4,proto=tcp,port=<port> <remote> <mount>\n"
+        f"  {PROG} umount <mount>\n",
         file=sys.stderr,
     )
 
 
+def _config_path() -> Path:
+    override = os.environ.get(ENV_CONFIG_PATH)
+    if override:
+        return Path(override)
+    return DEFAULT_CONFIG_PATH
+
+
 def _load_config() -> dict:
-    if not CONFIG_PATH.exists():
-        _fail(f"allowlist not found at {CONFIG_PATH}")
-    if CONFIG_PATH.is_symlink():
+    config_path = _config_path()
+    if not config_path.exists():
+        _fail(f"allowlist not found at {config_path}")
+    if config_path.is_symlink():
         _fail("allowlist must not be a symlink")
-    st = CONFIG_PATH.stat()
+    st = config_path.stat()
     if not stat.S_ISREG(st.st_mode):
         _fail("allowlist must be a regular file")
     if st.st_uid != 0:
@@ -36,7 +46,7 @@ def _load_config() -> dict:
     if st.st_mode & 0o022:
         _fail("allowlist must not be group/other writable")
     try:
-        with CONFIG_PATH.open("r", encoding="utf-8") as handle:
+        with config_path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
     except json.JSONDecodeError as exc:
         _fail(f"invalid JSON in allowlist: {exc}")

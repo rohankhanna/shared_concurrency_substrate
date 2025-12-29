@@ -139,7 +139,7 @@ Host mount notes:
 
 Optional: constrained sudo wrapper for host mounts
 - If you want to avoid repeated sudo prompts for NFS mount/unmount, install the constrained wrapper.
-- Set `GATE_SUDO_CMD="sudo /usr/local/bin/gate-sudo"` so Gate uses it for host mounts.
+- Set `GATE_SUDO_CMD="sudo /usr/local/bin/sudo-allow"` so Gate uses it for host mounts.
 - See `docs/SUDO_WRAPPER.md` for the allowlist and sudoers setup.
 
 Logs and state directories (defaults):
@@ -191,7 +191,7 @@ python3 tests/manual/lock_demo_b.py /mnt/gate/path/to/file
 - Lease and max hold: `--lease-ms`, `--max-hold-ms` (env: `GATE_LEASE_MS`, `GATE_MAX_HOLD_MS`)
 - Acquire timeout: `--acquire-timeout-ms` (env: `GATE_ACQUIRE_TIMEOUT_MS`)
 - VM workflow state root: `~/.local/state/gate/` (override with `XDG_STATE_HOME`)
-- Host sudo prefix (optional): `GATE_SUDO_CMD` (e.g., `sudo /usr/local/bin/gate-sudo`)
+- Host sudo prefix (optional): `GATE_SUDO_CMD` (e.g., `sudo /usr/local/bin/sudo-allow`)
 
 ## Lock behavior notes
 - FIFO fairness: reads block behind queued writers.

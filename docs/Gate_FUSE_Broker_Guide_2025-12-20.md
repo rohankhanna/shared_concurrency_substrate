@@ -52,9 +52,6 @@ If you already have a repo on the host and want to mirror it into the VM:
 3) On the host, mount the VM view with **NFS (recommended)** or sshfs and edit through it.  
    For NFS, ensure `user_allow_other` is enabled in `/etc/fuse.conf` and the FUSE mount uses `--allow-other`.
 
-Optional: if you want to avoid repeated sudo prompts for host-side NFS mounts,
-use the constrained sudo wrapper in `docs/SUDO_WRAPPER.md`.
-
 ## Notes
 - Reads will wait if a writer is queued ahead (strict FIFO).
 - Locks are global across runs (system-level state).

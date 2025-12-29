@@ -137,11 +137,6 @@ Host mount notes:
 - NFS mounts and unmounts require sudo; `gate up`/`gate down` will call sudo when needed.
 - SSHFS runs in the background; unmount with `gate down` or `fusermount3 -u <mount>`.
 
-Optional: constrained sudo wrapper for host mounts
-- If you want to avoid repeated sudo prompts for NFS mount/unmount, install the constrained wrapper.
-- Set `GATE_SUDO_CMD="sudo /usr/local/bin/terminal-sudo-guard"` so Gate uses it for host mounts.
-- See `docs/SUDO_WRAPPER.md` for the allowlist and sudoers setup.
-
 Logs and state directories (defaults):
 - Logs: `~/.local/state/gate/logs/<vm-name>/`
 - VM state: `~/.local/state/gate/state/<vm-name>/`
@@ -191,7 +186,6 @@ python3 tests/manual/lock_demo_b.py /mnt/gate/path/to/file
 - Lease and max hold: `--lease-ms`, `--max-hold-ms` (env: `GATE_LEASE_MS`, `GATE_MAX_HOLD_MS`)
 - Acquire timeout: `--acquire-timeout-ms` (env: `GATE_ACQUIRE_TIMEOUT_MS`)
 - VM workflow state root: `~/.local/state/gate/` (override with `XDG_STATE_HOME`)
-- Host sudo prefix (optional): `GATE_SUDO_CMD` (e.g., `sudo /usr/local/bin/terminal-sudo-guard`)
 
 ## Lock behavior notes
 - FIFO fairness: reads block behind queued writers.
@@ -206,7 +200,6 @@ python3 tests/manual/lock_demo_b.py /mnt/gate/path/to/file
 
 ## Related docs
 - `docs/GUIDE.md` for architecture details and manual flows.
-- `docs/SUDO_WRAPPER.md` for the constrained sudo wrapper setup (optional).
 - `systems/gate_vm/README.md` and `systems/gate_vm_firecracker/README.md` for VM internals.
 - `systems/firecracker_hello/README.md` for the minimal Firecracker demo.
 - `scripts/README.md` for helper script usage.

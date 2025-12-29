@@ -21,8 +21,6 @@ These scripts are helpers. Prefer the Gate executable subcommands for most workf
 - `setup_vm_gate.sh`: VM installer helper.
 - `setup_host_gate.sh`: host helper (use `gate up` for end-to-end). Supports `--mount-method nfs` or `sshfs`.
 - `export_shared_substrate.sh`: exports a copy of this folder into a new tree.
-- `terminal_sudo_guard.py`: constrained sudo wrapper for NFS mount/umount (see `docs/SUDO_WRAPPER.md`).
-- `terminal_sudo_guard_allowlist.sample.json`: sample allowlist config for the sudo wrapper.
 
 ## Tests
 - `smoke_test_fifo_sshfs.sh`: end-to-end FIFO blocking check over SSHFS (NFS is recommended for host editing).

@@ -56,15 +56,15 @@ def _open_with_retry(path: str, flags: int) -> int:
 
 def main() -> None:
     path = _demo_path()
-    print("B: about to open for write:", path, flush=True)
+    print(f"{time.time():.3f} B: about to open for write: {path}", flush=True)
     _wait_for_exists(path)
     start = time.time()
     fd = _open_with_retry(path, os.O_WRONLY)
     elapsed = time.time() - start
-    print(f"B: lock acquired after {elapsed:.2f}s, fd = {fd}", flush=True)
-    print("B: closing fd", flush=True)
+    print(f"{time.time():.3f} B: lock acquired after {elapsed:.2f}s, fd = {fd}", flush=True)
+    print(f"{time.time():.3f} B: closing fd", flush=True)
     os.close(fd)
-    print("B: released", flush=True)
+    print(f"{time.time():.3f} B: released", flush=True)
 
 
 if __name__ == "__main__":

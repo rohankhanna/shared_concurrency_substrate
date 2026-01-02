@@ -47,15 +47,15 @@ def _open_with_retry(path: str, flags: int, mode: int | None = None) -> int:
 
 def main() -> None:
     path = _demo_path()
-    print("A: opening (create) for write:", path, flush=True)
+    print(f"{time.time():.3f} A: opening (create) for write: {path}", flush=True)
     fd = _open_with_retry(path, os.O_WRONLY | os.O_CREAT)
-    print("A: lock acquired, fd =", fd, flush=True)
+    print(f"{time.time():.3f} A: lock acquired, fd = {fd}", flush=True)
     for i in range(1, 6):
-        print(f"A: holding lock... {i*3}s", flush=True)
+        print(f"{time.time():.3f} A: holding lock... {i*3}s", flush=True)
         time.sleep(3)
-    print("A: closing fd", flush=True)
+    print(f"{time.time():.3f} A: closing fd", flush=True)
     os.close(fd)
-    print("A: released", flush=True)
+    print(f"{time.time():.3f} A: released", flush=True)
 
 
 if __name__ == "__main__":

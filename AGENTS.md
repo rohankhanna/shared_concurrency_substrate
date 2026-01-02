@@ -29,3 +29,8 @@ git.
 
 If you are unsure which docs apply, scan `README.md` and `docs/` and add a
 short note to the most relevant files.
+
+## Remote execution
+- For ssh/scp tasks in this repo (VM bring-up, provisioning, diagnostics), the
+  agent should run the commands directly when possible instead of asking the
+  user to copy/paste them.

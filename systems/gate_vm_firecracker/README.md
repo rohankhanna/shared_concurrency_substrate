@@ -30,6 +30,7 @@ sudo apt-get install -y cloud-image-utils qemu-utils libguestfs-tools dnsmasq ip
   --repo-branch main \
   --ssh-key ~/.ssh/id_rsa.pub
 ```
+Ensure the matching private key (`~/.ssh/id_rsa`) exists for SSH access.
 
 ## Run the microVM (requires sudo)
 ```

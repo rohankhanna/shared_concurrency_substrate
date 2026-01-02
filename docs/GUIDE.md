@@ -32,7 +32,7 @@ python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-ho
 Add `--max-hold-ms` (or set `GATE_MAX_HOLD_MS`) to change the default 1-hour lock cap.
 
 ## VM setup (recommended for stronger enforcement)
-Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`.
+Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`. The matching private key must exist alongside the public key (same path without `.pub`).
 Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gate vm-list` and `gate down`.
 SSHFS is the supported host mount method; VirtioFS is a future option for performance.
 

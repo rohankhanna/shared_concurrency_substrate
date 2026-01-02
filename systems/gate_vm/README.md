@@ -26,6 +26,7 @@ sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils
   --ssh-key ~/.ssh/id_rsa.pub \
   --disk-size 20G
 ```
+Ensure the matching private key (`~/.ssh/id_rsa`) exists for SSH access.
 
 ## Run the VM (host)
 ```

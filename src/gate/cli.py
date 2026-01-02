@@ -373,6 +373,16 @@ def _ssh_base_args(
     return args
 
 
+def _resolve_ssh_identity(ssh_key_path: Path) -> Path:
+    if ssh_key_path.suffix == ".pub":
+        candidate = ssh_key_path.with_suffix("")
+        if candidate.is_file():
+            return candidate
+    if ssh_key_path.is_file():
+        return ssh_key_path
+    raise FileNotFoundError(f"SSH private key not found for {ssh_key_path}")
+
+
 def _ssh_command(
     ssh_port: int,
     known_hosts: Path | None,
@@ -845,6 +855,10 @@ def main(argv: Iterable[str] | None = None) -> None:
         ssh_key_path = Path(args.ssh_key).expanduser()
         if not ssh_key_path.is_file():
             parser.error(f"SSH key not found: {ssh_key_path}")
+        try:
+            ssh_identity = _resolve_ssh_identity(ssh_key_path)
+        except FileNotFoundError as exc:
+            parser.error(str(exc))
 
         accept_host_key = not args.strict_host_key
         if accept_host_key and known_hosts.exists():
@@ -945,7 +959,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                 ssh_port=args.ssh_port,
                 known_hosts=known_hosts,
                 accept_host_key=accept_host_key,
-                ssh_key=ssh_key_path,
+                ssh_key=ssh_identity,
                 timeout_seconds=args.ssh_timeout,
                 log_path=log_dir / "ssh.log",
                 verbose=args.verbose,
@@ -957,7 +971,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     args.ssh_port,
                     known_hosts,
                     accept_host_key,
-                    ssh_key_path,
+                    ssh_identity,
                     "gate@127.0.0.1",
                     "sudo env DEBIAN_FRONTEND=noninteractive apt-get update",
                 ),
@@ -970,7 +984,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     args.ssh_port,
                     known_hosts,
                     accept_host_key,
-                    ssh_key_path,
+                    ssh_identity,
                     "gate@127.0.0.1",
                     f"sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y {vm_deps}",
                 ),
@@ -982,7 +996,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     args.ssh_port,
                     known_hosts,
                     accept_host_key,
-                    ssh_key_path,
+                    ssh_identity,
                     "gate@127.0.0.1",
                     _ssh_shell_command(
                         "sudo mkdir -p /var/lib/gate /opt/target; "
@@ -1009,7 +1023,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                 "-P",
                 str(args.ssh_port),
                 "-i",
-                str(ssh_key_path),
+                str(ssh_identity),
                 "-o",
                 "IdentitiesOnly=yes",
                 "-o",
@@ -1030,7 +1044,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             _run_logged(
                 [
                     "ssh",
-                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key, ssh_key_path),
+                    *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key, ssh_identity),
                     "gate@127.0.0.1",
                     "sudo",
                     "install",
@@ -1055,7 +1069,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     "--info=progress2",
                     "-e",
                     (
-                        f"ssh -p {args.ssh_port} -i {shlex.quote(str(ssh_key_path))} "
+                        f"ssh -p {args.ssh_port} -i {shlex.quote(str(ssh_identity))} "
                         "-o IdentitiesOnly=yes "
                         f"-o UserKnownHostsFile={known_hosts} "
                         + ("-o StrictHostKeyChecking=accept-new" if accept_host_key else "")
@@ -1073,7 +1087,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     args.ssh_port,
                     known_hosts,
                     accept_host_key,
-                    ssh_key_path,
+                    ssh_identity,
                     "gate@127.0.0.1",
                     _ssh_shell_command(
                         "nohup /opt/gate/bin/gate broker --state-dir /var/lib/gate --host 127.0.0.1 --port 8787 "
@@ -1089,7 +1103,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     args.ssh_port,
                     known_hosts,
                     accept_host_key,
-                    ssh_key_path,
+                    ssh_identity,
                     "gate@127.0.0.1",
                     _ssh_shell_command(
                         "nohup /opt/gate/bin/gate mount "
@@ -1113,7 +1127,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                     sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
                 if accept_host_key:
                     sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
-                sshfs_cmd += ["-o", f"IdentityFile={ssh_key_path}", "-o", "IdentitiesOnly=yes"]
+                sshfs_cmd += ["-o", f"IdentityFile={ssh_identity}", "-o", "IdentitiesOnly=yes"]
                 sshfs_cmd += [f"gate@127.0.0.1:/mnt/gate", str(host_mount)]
                 _run_background(sshfs_cmd, log_dir / "host-mount.log")
 

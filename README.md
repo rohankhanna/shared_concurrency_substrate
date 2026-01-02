@@ -104,6 +104,8 @@ fusermount3 -u /mnt/gate
 ```
 ssh-keygen -t ed25519 -f ~/.ssh/gate_vm -N ""
 ```
+`gate up` uses the public key for VM auth and the matching private key
+(`~/.ssh/gate_vm`) for SSH/scp/rsync.
 
 2) Run the one-command workflow (build VM if needed, boot VM, install deps, copy the binary, sync the repo, start broker + mount, host-mount the gated view):
 ```

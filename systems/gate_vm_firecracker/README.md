@@ -42,14 +42,6 @@ ssh gate@<guest-ip>
 ```
 
 ## Mount the VM view on the host
-Recommended (NFS):
-```
-sudo apt-get install -y nfs-common
-sudo sh -lc "echo user_allow_other >> /etc/fuse.conf"
-sudo mount -t nfs4 -o vers=4,proto=tcp <guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
-```
-
-SSHFS (legacy):
 ```
 mkdir -p /mnt/gate_host_gate-fc
 sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc

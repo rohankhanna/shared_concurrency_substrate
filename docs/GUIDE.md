@@ -32,10 +32,9 @@ python3 scripts/gate_mount.py --root /path/to/repo --mount /mnt/gate --broker-ho
 Add `--max-hold-ms` (or set `GATE_MAX_HOLD_MS`) to change the default 1-hour lock cap.
 
 ## VM setup (recommended for stronger enforcement)
-Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo> --host-mount-method nfs`.
+Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`.
 Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gate vm-list` and `gate down`.
-NFS is recommended for host editing; SSHFS is still available via `--host-mount-method sshfs`.
-When using NFS, the FUSE mount must allow other users: `user_allow_other` in `/etc/fuse.conf` and `--allow-other`.
+SSHFS is the supported host mount method; VirtioFS is a future option for performance.
 
 If your terminal stops echoing after `gate up`, run `stty echo`.
 
@@ -51,6 +50,6 @@ If your terminal stops echoing after `gate up`, run `stty echo`.
 - Env vars: `GATE_STATE_DIR`, `GATE_BROKER_HOST`, `GATE_BROKER_PORT`, `GATE_MAX_HOLD_MS`
 
 ## Roadmap
-- Replace SSHFS with VirtioFS/NFS for performance.
+- Replace SSHFS with VirtioFS for performance.
 - Swap HTTP for Unix socket or gRPC.
 - Move broker to Rust for stronger isolation.

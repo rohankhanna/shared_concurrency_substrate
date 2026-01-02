@@ -6,7 +6,7 @@ Gate provides a broker-enforced filesystem view that applies strict FIFO read/wr
 ## Architecture (short)
 - Gate broker: HTTP server with a SQLite-backed lock store.
 - Gate FUSE mount: filesystem view that sends all open/read/write activity through the broker.
-- Optional VM: run the broker + mount in a VM and mount the VM view on the host (NFS recommended, SSHFS supported).
+- Optional VM: run the broker + mount in a VM and mount the VM view on the host (SSHFS).
 
 ## Supported platforms
 - Linux x86_64 with FUSE enabled. (macOS/Windows not supported directly; use a Linux VM.)
@@ -24,9 +24,9 @@ sudo apt-get install -y \
   openssh-client rsync
 ```
 
-Host mount tools (choose one or install both):
+Host mount tools:
 ```
-sudo apt-get install -y sshfs nfs-common
+sudo apt-get install -y sshfs
 ```
 
 VM host tools (QEMU/KVM):
@@ -112,8 +112,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/gate_vm -N ""
   --vm-dir ./vm_build \
   --vm-name gate-vm \
   --ssh-key ~/.ssh/gate_vm.pub \
-  --repo-path /path/to/host/repo \
-  --host-mount-method nfs
+  --repo-path /path/to/host/repo
 ```
 
 Supported bases: `ubuntu-22.04`, `ubuntu-24.04`, `debian-12`.
@@ -132,9 +131,6 @@ Common VM commands:
 ```
 
 Host mount notes:
-- `--host-mount-method nfs` is recommended for editing.
-- NFS requires `user_allow_other` in `/etc/fuse.conf`; `gate up` appends it if missing.
-- NFS mounts and unmounts require sudo; `gate up`/`gate down` will call sudo when needed.
 - SSHFS runs in the background; unmount with `gate down` or `fusermount3 -u <mount>`.
 
 Logs and state directories (defaults):
@@ -147,8 +143,6 @@ Optional flags for `gate up`:
 - `--binary /path/to/gate` (defaults to `which gate`)
 - `--redownload` (force base image re-download)
 - `--max-hold-ms <milliseconds>` (hard cap for lock holds, default 3600000)
-- `--host-mount-method sshfs|nfs`
-- `--nfs-port <port>` (default 2049)
 - `--verbose` (stream logs to console)
 - `--dry-run` (print commands without executing)
 - `--keep-vm-on-error` (do not stop the VM if setup fails)
@@ -167,10 +161,8 @@ The Firecracker flow uses scripts (the `gate up` workflow targets QEMU/KVM):
 sudo ./scripts/run_vm_firecracker.sh --vm-dir ./vm_firecracker --vm-name gate-fc
 ```
 
-Mount the VM view on the host (choose one):
+Mount the VM view on the host:
 ```
-sudo mount -t nfs4 -o vers=4,proto=tcp <guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
-# or
 sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
 

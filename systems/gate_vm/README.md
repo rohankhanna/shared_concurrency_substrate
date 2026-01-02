@@ -33,14 +33,6 @@ sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils
 ```
 
 ## Mount VM view on the host
-Recommended (NFS over forwarded port 2049):
-```
-sudo apt-get install -y nfs-common
-sudo sh -lc "echo user_allow_other >> /etc/fuse.conf"
-sudo mount -t nfs4 -o vers=4,proto=tcp,port=2049 127.0.0.1:/mnt/gate /mnt/gate_host_gate-vm
-```
-
-SSHFS (legacy):
 ```
 mkdir -p /mnt/gate_host_gate-vm
 sshfs gate@127.0.0.1:/mnt/gate /mnt/gate_host_gate-vm -p 2222

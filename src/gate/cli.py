@@ -166,7 +166,6 @@ def _build_parser() -> argparse.ArgumentParser:
     vm_run.add_argument("--ssh-port", default="2222")
     vm_run.add_argument("--memory", default="4096")
     vm_run.add_argument("--cpus", default="2")
-    vm_run.add_argument("--nfs-port", type=int, default=None, help="Forward host port to guest 2049 for NFS")
 
     up = subparsers.add_parser("up", help="Run full end-to-end workflow with logs")
     up.add_argument("--vm-name", default="gate-vm")
@@ -182,7 +181,7 @@ def _build_parser() -> argparse.ArgumentParser:
     up.add_argument("--host-mount", default=None)
     up.add_argument(
         "--host-mount-method",
-        choices=["sshfs", "nfs"],
+        choices=["sshfs"],
         default="sshfs",
         help="How to mount the VM view on the host",
     )
@@ -191,7 +190,6 @@ def _build_parser() -> argparse.ArgumentParser:
     up.add_argument("--ssh-timeout", type=int, default=180)
     up.add_argument("--memory", default="4096")
     up.add_argument("--cpus", default="2")
-    up.add_argument("--nfs-port", type=int, default=2049)
     up.add_argument("--max-hold-ms", type=int, default=BrokerConfig().max_hold_ms)
     up.add_argument("--skip-build", action="store_true")
     up.add_argument("--skip-host-mount", action="store_true")
@@ -243,11 +241,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--method",
         "--host-mount-method",
         dest="host_mount_method",
-        choices=["sshfs", "nfs"],
+        choices=["sshfs"],
         default="sshfs",
         help="Mount method to use",
     )
-    host_mount.add_argument("--nfs-port", type=int, default=2049)
     host_mount.add_argument("--known-hosts")
     host_mount.add_argument("--accept-host-key", action="store_true")
 
@@ -257,11 +254,6 @@ def _build_parser() -> argparse.ArgumentParser:
 def _require_cmd(name: str) -> None:
     if shutil.which(name) is None:
         raise RuntimeError(f"Required command not found: {name}")
-
-
-def _require_nfs_mount_helper() -> None:
-    if shutil.which("mount.nfs4") is None and shutil.which("mount.nfs") is None:
-        raise RuntimeError("NFS mount helper not found (install nfs-common)")
 
 
 def _maybe_sudo(cmd: list[str]) -> list[str]:
@@ -341,13 +333,10 @@ def _qemu_command(
     ssh_port: str,
     memory: str,
     cpus: str,
-    nfs_port: int | None = None,
 ) -> list[str]:
     root_disk = vm_dir / f"{vm_name}.qcow2"
     seed_img = vm_dir / f"{vm_name}-seed.img"
     hostfwd = [f"hostfwd=tcp::{ssh_port}-:22"]
-    if nfs_port is not None:
-        hostfwd.append(f"hostfwd=tcp::{nfs_port}-:2049")
     netdev = f"user,id=net0,{','.join(hostfwd)}"
     return [
         "qemu-system-x86_64",
@@ -828,7 +817,6 @@ def main(argv: Iterable[str] | None = None) -> None:
                 args.ssh_port,
                 args.memory,
                 args.cpus,
-                args.nfs_port,
             )
         )
         return
@@ -846,22 +834,18 @@ def main(argv: Iterable[str] | None = None) -> None:
         started_vm = False
 
         if args.dry_run:
-            nfs_port = args.nfs_port if args.host_mount_method == "nfs" else None
             qemu_cmd = _qemu_command(
                 vm_dir,
                 args.vm_name,
                 str(args.ssh_port),
                 args.memory,
                 args.cpus,
-                nfs_port,
             )
             print("Dry run:")
             print(f"- vm-build (base={args.base}, vm-dir={vm_dir}, vm-name={args.vm_name})")
             print(f"- vm-run: {' '.join(qemu_cmd)}")
             print(f"- wait for ssh: gate@127.0.0.1:{args.ssh_port}")
             deps = "apt-get update && apt-get install -y fuse3 libfuse3-3"
-            if args.host_mount_method == "nfs":
-                deps += " nfs-kernel-server"
             print(f"- install deps: {deps}")
             print(f"- copy binary: {args.binary or '$(which gate)'} -> /opt/gate/bin/gate")
             print(f"- rsync repo: {args.repo_path} -> {args.vm_repo_path}")
@@ -869,13 +853,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             print("- start mount: /opt/gate/bin/gate mount --root <repo> --mount /mnt/gate")
             if not args.skip_host_mount:
                 host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
-                if args.host_mount_method == "nfs":
-                    print(
-                        f"- host mount: sudo mount -t nfs4 -o vers=4,proto=tcp,port={args.nfs_port} "
-                        f"127.0.0.1:/mnt/gate {host_mount}"
-                    )
-                else:
-                    print(f"- host mount: /mnt/gate -> {host_mount}")
+                print(f"- host mount: /mnt/gate -> {host_mount}")
             print(f"- logs: {log_dir}")
             return
 
@@ -927,14 +905,12 @@ def main(argv: Iterable[str] | None = None) -> None:
                     pid_file.unlink(missing_ok=True)
             if not pid_file.exists():
                 _require_cmd("qemu-system-x86_64")
-                nfs_port = args.nfs_port if args.host_mount_method == "nfs" else None
                 qemu_cmd = _qemu_command(
                     vm_dir,
                     args.vm_name,
                     str(args.ssh_port),
                     args.memory,
                     args.cpus,
-                    nfs_port,
                 )
                 log_path = log_dir / "vm-run.log"
                 log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -968,8 +944,6 @@ def main(argv: Iterable[str] | None = None) -> None:
                 args.verbose,
             )
             vm_deps = "fuse3 libfuse3-3 libfuse2"
-            if args.host_mount_method == "nfs":
-                vm_deps += " nfs-kernel-server"
             _run_logged(
                 _ssh_command(
                     args.ssh_port,
@@ -997,27 +971,6 @@ def main(argv: Iterable[str] | None = None) -> None:
             log_dir / "deps.log",
             args.verbose,
         )
-            if args.host_mount_method == "nfs":
-                export_line = (
-                    "/mnt/gate 10.0.2.2/32"
-                    "(rw,sync,no_subtree_check,no_root_squash,insecure)"
-                )
-                _run_logged(
-                    _ssh_command(
-                        args.ssh_port,
-                        known_hosts,
-                        accept_host_key,
-                        "gate@127.0.0.1",
-                        _ssh_shell_command(
-                            "sudo mkdir -p /etc/exports.d && "
-                            f"echo {shlex.quote(export_line)} | sudo tee /etc/exports.d/gate.exports >/dev/null && "
-                            "sudo exportfs -ra && "
-                            "sudo systemctl enable --now nfs-kernel-server"
-                        ),
-                    ),
-                    log_dir / "deps.log",
-                    args.verbose,
-                )
 
             # Step 5: Install gate binary into VM
             if args.binary is not None:
@@ -1107,7 +1060,6 @@ def main(argv: Iterable[str] | None = None) -> None:
                         f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
                         "--broker-host 127.0.0.1 --broker-port 8787 "
                         f"--max-hold-ms {args.max_hold_ms} "
-                        + ("--allow-other " if args.host_mount_method == "nfs" else "")
                         + "> /var/lib/gate/fuse.log 2>&1 &"
                     ),
                 ),
@@ -1119,29 +1071,14 @@ def main(argv: Iterable[str] | None = None) -> None:
             if not args.skip_host_mount:
                 host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
                 _ensure_mount_dir(host_mount)
-                if args.host_mount_method == "nfs":
-                    _require_nfs_mount_helper()
-                    mount_cmd = _maybe_sudo(
-                        [
-                            "mount",
-                            "-t",
-                            "nfs4",
-                            "-o",
-                            f"vers=4,proto=tcp,port={args.nfs_port}",
-                            "127.0.0.1:/mnt/gate",
-                            str(host_mount),
-                        ]
-                    )
-                    _run_logged(mount_cmd, log_dir / "host-mount.log", args.verbose)
-                else:
-                    _require_cmd("sshfs")
-                    sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
-                    if known_hosts is not None:
-                        sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
-                    if accept_host_key:
-                        sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
-                    sshfs_cmd += [f"gate@127.0.0.1:/mnt/gate", str(host_mount)]
-                    _run_background(sshfs_cmd, log_dir / "host-mount.log")
+                _require_cmd("sshfs")
+                sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
+                if known_hosts is not None:
+                    sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
+                if accept_host_key:
+                    sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+                sshfs_cmd += [f"gate@127.0.0.1:/mnt/gate", str(host_mount)]
+                _run_background(sshfs_cmd, log_dir / "host-mount.log")
 
             print(f"Gate up complete. Logs: {log_dir}")
             return
@@ -1425,32 +1362,16 @@ def main(argv: Iterable[str] | None = None) -> None:
     if args.command == "host-mount":
         host_mount = Path(args.host_mount).expanduser()
         _ensure_mount_dir(host_mount)
-        if args.host_mount_method == "nfs":
-            _require_nfs_mount_helper()
-            mount_cmd = _maybe_sudo(
-                [
-                    "mount",
-                    "-t",
-                    "nfs4",
-                    "-o",
-                    f"vers=4,proto=tcp,port={args.nfs_port}",
-                    f"{args.vm_host}:{args.vm_mount}",
-                    str(host_mount),
-                ]
-            )
-            _run_logged(mount_cmd, _gate_log_dir("host-mount") / "nfs.log", True)
-            print(f"NFS mount: {args.vm_host}:/ -> {host_mount}")
-        else:
-            _require_cmd("sshfs")
-            sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
-            if args.known_hosts:
-                known_hosts = Path(args.known_hosts).expanduser()
-                sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
-            if args.accept_host_key:
-                sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
-            sshfs_cmd += [f"{args.vm_user}@{args.vm_host}:{args.vm_mount}", str(host_mount)]
-            _run_background(sshfs_cmd, _gate_log_dir("host-mount") / "sshfs.log")
-            print(f"Mount started: {args.vm_host}:{args.vm_mount} -> {host_mount}")
+        _require_cmd("sshfs")
+        sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
+        if args.known_hosts:
+            known_hosts = Path(args.known_hosts).expanduser()
+            sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
+        if args.accept_host_key:
+            sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+        sshfs_cmd += [f"{args.vm_user}@{args.vm_host}:{args.vm_mount}", str(host_mount)]
+        _run_background(sshfs_cmd, _gate_log_dir("host-mount") / "sshfs.log")
+        print(f"Mount started: {args.vm_host}:{args.vm_mount} -> {host_mount}")
         return
 
     parser.error("Unknown command")

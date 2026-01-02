@@ -25,7 +25,7 @@ Inside the VM:
 
 On the host:
 ```
-./scripts/setup_host_gate.sh --vm-user <user> --vm-host <vm-ip> --install-nfs --mount-method nfs
+./scripts/setup_host_gate.sh --vm-user <user> --vm-host <vm-ip> --mount-method sshfs
 ```
 
 ## Start the broker (manual)
@@ -49,8 +49,7 @@ If you already have a repo on the host and want to mirror it into the VM:
 ./scripts/setup_host_gate.sh --vm-user <user> --vm-host <vm-ip> --sync --repo-path /path/to/host/repo --vm-repo-path /path/to/vm/repo
 ```
 2) Inside the VM, run the broker and mount using the VM repo path.
-3) On the host, mount the VM view with **NFS (recommended)** or sshfs and edit through it.  
-   For NFS, ensure `user_allow_other` is enabled in `/etc/fuse.conf` and the FUSE mount uses `--allow-other`.
+3) On the host, mount the VM view with **sshfs** and edit through it.
 
 ## Notes
 - Reads will wait if a writer is queued ahead (strict FIFO).
@@ -73,6 +72,6 @@ Run on the host after mounting the VM view:
 ```
 
 ## Scaling options (later)
-- Replace SSHFS with VirtioFS or NFS for lower latency and higher throughput.
+- Replace SSHFS with VirtioFS for lower latency and higher throughput.
 - Replace the HTTP broker with a Unix socket or gRPC transport.
 - Re-implement the broker in Rust for performance and stronger concurrency control.

@@ -164,6 +164,12 @@ Optional flags for `gate up`:
 - `--dry-run` (print commands without executing)
 - `--keep-vm-on-error` (do not stop the VM if setup fails)
 
+Cleanup:
+```
+./dist/gate clean --vm-name gate-vm
+```
+Use this if a host mount is stale or a host-direct mount directory is not empty.
+
 ### 6C) Firecracker VM (optional)
 The Firecracker flow uses scripts (the `gate up` workflow targets QEMU/KVM):
 ```

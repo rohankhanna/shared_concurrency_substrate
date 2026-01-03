@@ -217,6 +217,12 @@ def _build_parser() -> argparse.ArgumentParser:
     down.add_argument("--force", action="store_true")
     down.add_argument("--skip-unmount", action="store_true")
 
+    clean = subparsers.add_parser("clean", help="Clean host-side mounts and state")
+    clean.add_argument("--vm-name", default=None)
+    clean.add_argument("--logs", action="store_true", help="Remove logs for the VM")
+    clean.add_argument("--state", action="store_true", help="Remove VM state dir (pid files, known_hosts)")
+    clean.add_argument("--all", action="store_true", help="Remove logs and state")
+
     host = subparsers.add_parser(
         "host-provision",
         help="Install Gate bundle in a VM and sync a repo from the host",
@@ -508,12 +514,18 @@ def _ensure_empty_dir(path: Path) -> None:
     _ensure_mount_dir(path)
     try:
         if any(path.iterdir()):
-            raise RuntimeError(f"Mount directory is not empty: {path}")
+            raise RuntimeError(
+                f"Mount directory is not empty: {path}. "
+                f"Run `gate clean --vm-name <name>` to reset host mounts."
+            )
     except OSError as exc:
         if exc.errno == errno.ENOTCONN:
             _unmount_path(path)
             if any(path.iterdir()):
-                raise RuntimeError(f"Mount directory is not empty: {path}") from exc
+                raise RuntimeError(
+                    f"Mount directory is not empty: {path}. "
+                    f"Run `gate clean --vm-name <name>` to reset host mounts."
+                ) from exc
         else:
             raise
 
@@ -545,6 +557,21 @@ def _wait_for_fuse_mount(path: Path, timeout_seconds: int) -> None:
                 time.sleep(0.25)
                 continue
             raise
+
+
+def _safe_clear_dir(path: Path, root: Path) -> None:
+    try:
+        resolved = path.resolve()
+        root_resolved = root.resolve()
+    except Exception:
+        raise RuntimeError(f"Failed to resolve path for cleanup: {path}")
+    if resolved == root_resolved or root_resolved not in resolved.parents:
+        raise RuntimeError(f"Refusing to clean non-state path: {resolved}")
+    for entry in resolved.iterdir():
+        if entry.is_dir():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
 
 
 def _wait_for_ssh(
@@ -1504,6 +1531,62 @@ def main(argv: Iterable[str] | None = None) -> None:
                     raise RuntimeError(f"Failed to stop VM {vm_name}: {exc}") from exc
         else:
             print(f"No PID file for {vm_name} (already stopped?)")
+        return
+
+    if args.command == "clean":
+        vm_names = _list_vm_names()
+        if args.vm_name is None:
+            if len(vm_names) == 1:
+                vm_name = vm_names[0]
+            elif len(vm_names) == 0:
+                parser.error("No VMs found. Provide --vm-name.")
+            else:
+                print("Multiple VMs found. Provide --vm-name.")
+                for name in vm_names:
+                    print(f"  - {name}")
+                return
+        else:
+            vm_name = args.vm_name
+
+        state_dir = _gate_state_dir(vm_name)
+        log_dir = _gate_log_dir(vm_name)
+        host_mount = _gate_mount_dir(vm_name)
+        host_direct_pid = _gate_host_direct_pid_path(state_dir)
+        host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
+        tunnel_pid = _gate_tunnel_pid_path(state_dir)
+
+        _stop_pid_file(host_direct_pid, "host-direct", force=True)
+        _stop_pid_file(tunnel_pid, "tunnel", force=True)
+
+        try:
+            _unmount_path(host_mount)
+        except Exception:
+            pass
+
+        host_direct_mount = _gate_host_direct_mount_dir()
+        if host_direct_mount_record.exists():
+            try:
+                host_direct_mount = Path(host_direct_mount_record.read_text().strip())
+            except Exception:
+                host_direct_mount = _gate_host_direct_mount_dir()
+        try:
+            _unmount_path(host_direct_mount)
+        except Exception:
+            pass
+
+        mounts_root = _state_home() / "gate" / "mounts"
+        if host_mount.exists():
+            _safe_clear_dir(host_mount, mounts_root)
+        if host_direct_mount.exists():
+            _safe_clear_dir(host_direct_mount, mounts_root)
+
+        if args.all or args.logs:
+            if log_dir.exists():
+                shutil.rmtree(log_dir)
+        if args.all or args.state:
+            if state_dir.exists():
+                shutil.rmtree(state_dir)
+        print(f"Cleaned host state for {vm_name}")
         return
 
     if args.command == "host-provision":

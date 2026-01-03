@@ -40,6 +40,11 @@ Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gat
 
 If your terminal stops echoing after `gate up`, run `stty echo`.
 
+If a host mount is stale or the host-direct mount dir is not empty, run:
+```
+gate clean --vm-name <name>
+```
+
 ## FIFO smoke test
 Use `tests/manual/lock_demo_run.py` against the host-direct mount to verify that writers block in order.
 

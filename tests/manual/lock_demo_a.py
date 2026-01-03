@@ -4,10 +4,15 @@
 import os
 import time
 
-MOUNT_DIR = os.environ.get(
-    "GATE_DEMO_MOUNT",
-    "/home/kajsfasdfnaf/.local/state/gate/mounts/gate-vm",
+_DEFAULT_MOUNT = os.path.join(
+    os.path.expanduser("~"),
+    ".local",
+    "state",
+    "gate",
+    "mounts",
+    "gate-host-direct",
 )
+MOUNT_DIR = os.environ.get("GATE_DEMO_MOUNT", _DEFAULT_MOUNT)
 REL_PATH = os.environ.get("GATE_DEMO_FILE", "LOCK_DEMO.txt")
 
 

@@ -169,9 +169,17 @@ sshfs gate@<guest-ip>:/mnt/gate /mnt/gate_host_gate-fc
 ```
 
 ### 7) Verify locking behavior (manual demo)
+Single-command manual demo (spawns A then B in one terminal):
 ```
-python3 tests/manual/lock_demo_a.py /mnt/gate/path/to/file
-python3 tests/manual/lock_demo_b.py /mnt/gate/path/to/file
+GATE_DEMO_MOUNT=$HOME/.local/state/gate/mounts/gate-host-direct \
+GATE_DEMO_FILE=README.md \
+python3 tests/manual/lock_demo_run.py
+```
+
+If you want to run them separately in two terminals:
+```
+python3 tests/manual/lock_demo_a.py
+python3 tests/manual/lock_demo_b.py
 ```
 
 ## Configuration and defaults

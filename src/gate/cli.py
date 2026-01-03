@@ -181,9 +181,9 @@ def _build_parser() -> argparse.ArgumentParser:
     up.add_argument("--host-mount", default=None)
     up.add_argument(
         "--host-mount-method",
-        choices=["sshfs"],
+        choices=["sshfs", "host-direct"],
         default="sshfs",
-        help="How to mount the VM view on the host",
+        help="How to mount a gated view on the host",
     )
     up.add_argument("--accept-host-key", action="store_true", default=True)
     up.add_argument("--strict-host-key", action="store_true")
@@ -299,7 +299,18 @@ def _run_logged(
 def _run_background(cmd: list[str], log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log = open(log_path, "a", encoding="utf-8")
-    subprocess.Popen(cmd, stdout=log, stderr=log)
+    subprocess.Popen(cmd, stdout=log, stderr=log, start_new_session=True)
+
+
+def _run_background_pid(
+    cmd: list[str],
+    log_path: Path,
+    env: dict[str, str] | None = None,
+) -> int:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = open(log_path, "a", encoding="utf-8")
+    proc = subprocess.Popen(cmd, stdout=log, stderr=log, env=env, start_new_session=True)
+    return proc.pid
 
 
 def _find_repo_root() -> Path | None:
@@ -325,6 +336,22 @@ def _gate_log_dir(vm_name: str) -> Path:
 
 def _gate_mount_dir(vm_name: str) -> Path:
     return _state_home() / "gate" / "mounts" / vm_name
+
+
+def _gate_host_direct_mount_dir() -> Path:
+    return _state_home() / "gate" / "mounts" / "gate-host-direct"
+
+
+def _gate_tunnel_pid_path(state_dir: Path) -> Path:
+    return state_dir / "tunnel.pid"
+
+
+def _gate_host_direct_pid_path(state_dir: Path) -> Path:
+    return state_dir / "host-direct.pid"
+
+
+def _gate_host_direct_mount_path(state_dir: Path) -> Path:
+    return state_dir / "host-direct.mount"
 
 
 def _qemu_command(
@@ -446,6 +473,26 @@ def _unmount_path(path: Path) -> None:
         raise
 
 
+def _stop_pid_file(pid_file: Path, label: str, force: bool = True) -> None:
+    if not pid_file.exists():
+        return
+    try:
+        pid = int(pid_file.read_text().strip())
+    except Exception:
+        pid_file.unlink(missing_ok=True)
+        return
+    try:
+        if _is_pid_running(pid):
+            os.kill(pid, signal.SIGTERM)
+            time.sleep(1)
+            if force and _is_pid_running(pid):
+                os.kill(pid, signal.SIGKILL)
+    except Exception:
+        if not force:
+            raise
+    pid_file.unlink(missing_ok=True)
+
+
 def _ensure_mount_dir(path: Path) -> None:
     try:
         path.mkdir(parents=True, exist_ok=True)
@@ -454,6 +501,49 @@ def _ensure_mount_dir(path: Path) -> None:
             _unmount_path(path)
             path.mkdir(parents=True, exist_ok=True)
         else:
+            raise
+
+
+def _ensure_empty_dir(path: Path) -> None:
+    _ensure_mount_dir(path)
+    try:
+        if any(path.iterdir()):
+            raise RuntimeError(f"Mount directory is not empty: {path}")
+    except OSError as exc:
+        if exc.errno == errno.ENOTCONN:
+            _unmount_path(path)
+            if any(path.iterdir()):
+                raise RuntimeError(f"Mount directory is not empty: {path}") from exc
+        else:
+            raise
+
+
+def _wait_for_port(host: str, port: int, timeout_seconds: int) -> None:
+    start = time.monotonic()
+    while True:
+        if time.monotonic() - start > timeout_seconds:
+            raise RuntimeError(f"Timed out waiting for {host}:{port}")
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return
+        except OSError:
+            time.sleep(0.5)
+
+
+def _wait_for_fuse_mount(path: Path, timeout_seconds: int) -> None:
+    start = time.monotonic()
+    last_exc: Exception | None = None
+    while True:
+        if time.monotonic() - start > timeout_seconds:
+            raise RuntimeError(f"Timed out waiting for mount: {path}") from last_exc
+        try:
+            os.listdir(path)
+            return
+        except OSError as exc:
+            last_exc = exc
+            if exc.errno in (errno.ENOTCONN, errno.EIO, errno.ENOENT):
+                time.sleep(0.25)
+                continue
             raise
 
 
@@ -852,6 +942,10 @@ def main(argv: Iterable[str] | None = None) -> None:
         state_dir = _gate_state_dir(args.vm_name)
         state_dir.mkdir(parents=True, exist_ok=True)
         known_hosts = state_dir / "known_hosts"
+        host_direct = args.host_mount_method == "host-direct"
+        tunnel_pid_path = _gate_tunnel_pid_path(state_dir)
+        host_direct_pid_path = _gate_host_direct_pid_path(state_dir)
+        host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
         ssh_key_path = Path(args.ssh_key).expanduser()
         if not ssh_key_path.is_file():
             parser.error(f"SSH key not found: {ssh_key_path}")
@@ -865,6 +959,8 @@ def main(argv: Iterable[str] | None = None) -> None:
             known_hosts.unlink()
 
         started_vm = False
+        started_tunnel = False
+        started_host_direct = False
 
         if args.dry_run:
             qemu_cmd = _qemu_command(
@@ -883,10 +979,20 @@ def main(argv: Iterable[str] | None = None) -> None:
             print(f"- copy binary: {args.binary or '$(which gate)'} -> /opt/gate/bin/gate")
             print(f"- rsync repo: {args.repo_path} -> {args.vm_repo_path}")
             print("- start broker: /opt/gate/bin/gate broker --port 8787")
-            print("- start mount: /opt/gate/bin/gate mount --root <repo> --mount /mnt/gate")
-            if not args.skip_host_mount:
-                host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
-                print(f"- host mount: /mnt/gate -> {host_mount}")
+            if host_direct:
+                print("- start ssh tunnel: 127.0.0.1:8787 -> vm 127.0.0.1:8787")
+                if not args.skip_host_mount:
+                    host_mount = (
+                        Path(args.host_mount).expanduser()
+                        if args.host_mount
+                        else _gate_host_direct_mount_dir()
+                    )
+                    print(f"- host direct mount: {args.repo_path} -> {host_mount}")
+            else:
+                print("- start mount: /opt/gate/bin/gate mount --root <repo> --mount /mnt/gate")
+                if not args.skip_host_mount:
+                    host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
+                    print(f"- host mount: /mnt/gate -> {host_mount}")
             print(f"- logs: {log_dir}")
             return
 
@@ -1098,42 +1204,109 @@ def main(argv: Iterable[str] | None = None) -> None:
                 log_dir / "broker.log",
                 args.verbose,
             )
-            _run_logged(
-                _ssh_command(
-                    args.ssh_port,
-                    known_hosts,
-                    accept_host_key,
-                    ssh_identity,
-                    "gate@127.0.0.1",
-                    _ssh_shell_command(
-                        "nohup /opt/gate/bin/gate mount "
-                        f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
-                        "--broker-host 127.0.0.1 --broker-port 8787 "
-                        f"--max-hold-ms {args.max_hold_ms} "
-                        + "> /var/lib/gate/fuse.log 2>&1 &"
+            if not host_direct:
+                _run_logged(
+                    _ssh_command(
+                        args.ssh_port,
+                        known_hosts,
+                        accept_host_key,
+                        ssh_identity,
+                        "gate@127.0.0.1",
+                        _ssh_shell_command(
+                            "nohup /opt/gate/bin/gate mount "
+                            f"--root {shlex.quote(args.vm_repo_path)} --mount /mnt/gate "
+                            "--broker-host 127.0.0.1 --broker-port 8787 "
+                            f"--max-hold-ms {args.max_hold_ms} "
+                            + "> /var/lib/gate/fuse.log 2>&1 &"
+                        ),
                     ),
-                ),
-                log_dir / "mount.log",
-                args.verbose,
-            )
+                    log_dir / "mount.log",
+                    args.verbose,
+                )
 
             # Step 8: Host mount
             if not args.skip_host_mount:
-                host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
-                _ensure_mount_dir(host_mount)
-                _require_cmd("sshfs")
-                sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
-                if known_hosts is not None:
-                    sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
-                if accept_host_key:
-                    sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
-                sshfs_cmd += ["-o", f"IdentityFile={ssh_identity}", "-o", "IdentitiesOnly=yes"]
-                sshfs_cmd += [f"gate@127.0.0.1:/mnt/gate", str(host_mount)]
-                _run_background(sshfs_cmd, log_dir / "host-mount.log")
+                if host_direct:
+                    host_mount = (
+                        Path(args.host_mount).expanduser()
+                        if args.host_mount
+                        else _gate_host_direct_mount_dir()
+                    )
+                    _ensure_empty_dir(host_mount)
+                    host_direct_mount_record.write_text(str(host_mount))
+                    # Start SSH tunnel for broker
+                    if tunnel_pid_path.exists():
+                        try:
+                            existing_pid = int(tunnel_pid_path.read_text().strip())
+                            if not _is_pid_running(existing_pid):
+                                tunnel_pid_path.unlink(missing_ok=True)
+                        except Exception:
+                            tunnel_pid_path.unlink(missing_ok=True)
+                    if not tunnel_pid_path.exists():
+                        tunnel_cmd = [
+                            "ssh",
+                            *_ssh_base_args(args.ssh_port, known_hosts, accept_host_key, ssh_identity),
+                            "-o",
+                            "ExitOnForwardFailure=yes",
+                            "-N",
+                            "-L",
+                            "8787:127.0.0.1:8787",
+                            "gate@127.0.0.1",
+                        ]
+                        tunnel_pid = _run_background_pid(tunnel_cmd, log_dir / "tunnel.log")
+                        tunnel_pid_path.write_text(str(tunnel_pid))
+                        started_tunnel = True
+                    _wait_for_port("127.0.0.1", 8787, 20)
+
+                    env = os.environ.copy()
+                    host_mount_cmd = [
+                        str(binary_path),
+                        "mount",
+                        "--root",
+                        str(repo_path),
+                        "--mount",
+                        str(host_mount),
+                        "--broker-host",
+                        "127.0.0.1",
+                        "--broker-port",
+                        "8787",
+                        "--max-hold-ms",
+                        str(args.max_hold_ms),
+                        "--foreground",
+                    ]
+                    host_direct_pid = _run_background_pid(
+                        host_mount_cmd,
+                        log_dir / "host-direct.log",
+                        env=env,
+                    )
+                    host_direct_pid_path.write_text(str(host_direct_pid))
+                    started_host_direct = True
+                    _wait_for_fuse_mount(host_mount, 20)
+                else:
+                    host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(args.vm_name)
+                    _ensure_mount_dir(host_mount)
+                    _require_cmd("sshfs")
+                    sshfs_cmd = ["sshfs", "-o", f"port={args.ssh_port}"]
+                    if known_hosts is not None:
+                        sshfs_cmd += ["-o", f"UserKnownHostsFile={known_hosts}"]
+                    if accept_host_key:
+                        sshfs_cmd += ["-o", "StrictHostKeyChecking=accept-new"]
+                    sshfs_cmd += ["-o", f"IdentityFile={ssh_identity}", "-o", "IdentitiesOnly=yes"]
+                    sshfs_cmd += [f"gate@127.0.0.1:/mnt/gate", str(host_mount)]
+                    _run_background(sshfs_cmd, log_dir / "host-mount.log")
 
             print(f"Gate up complete. Logs: {log_dir}")
             return
         except Exception:
+            if started_host_direct:
+                _stop_pid_file(host_direct_pid_path, "host-direct", force=True)
+                try:
+                    if host_direct_mount_record.exists():
+                        _unmount_path(Path(host_direct_mount_record.read_text().strip()))
+                except Exception:
+                    pass
+            if started_tunnel:
+                _stop_pid_file(tunnel_pid_path, "tunnel", force=True)
             if not args.keep_vm_on_error and started_vm and pid_file.exists():
                 try:
                     pid = int(pid_file.read_text().strip())
@@ -1154,6 +1327,9 @@ def main(argv: Iterable[str] | None = None) -> None:
         state_dir = _gate_state_dir(vm_name)
         log_dir = _gate_log_dir(vm_name)
         host_mount = Path(args.host_mount).expanduser() if args.host_mount else _gate_mount_dir(vm_name)
+        host_direct_pid = _gate_host_direct_pid_path(state_dir)
+        host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
+        tunnel_pid = _gate_tunnel_pid_path(state_dir)
         known_hosts = state_dir / "known_hosts"
         print(f"Logs: {log_dir}")
         pid_file = state_dir / "vm.pid"
@@ -1190,6 +1366,30 @@ def main(argv: Iterable[str] | None = None) -> None:
             print("SSH: reachable")
         except Exception:
             print("SSH: unreachable")
+
+        if tunnel_pid.exists():
+            try:
+                pid = int(tunnel_pid.read_text().strip())
+                status = "running" if _is_pid_running(pid) else "stopped"
+                print(f"SSH tunnel: {status} (pid {pid})")
+            except Exception:
+                print("SSH tunnel: unknown (pid file unreadable)")
+
+        if host_direct_pid.exists():
+            try:
+                pid = int(host_direct_pid.read_text().strip())
+                status = "running" if _is_pid_running(pid) else "stopped"
+                print(f"Host direct: {status} (pid {pid})")
+            except Exception:
+                print("Host direct: unknown (pid file unreadable)")
+        if host_direct_mount_record.exists():
+            try:
+                mount_path = Path(host_direct_mount_record.read_text().strip())
+                with open("/proc/mounts", "r", encoding="utf-8") as f:
+                    mounted = any(str(mount_path) in line for line in f)
+                print(f"Host direct mount: {'mounted' if mounted else 'not mounted'} ({mount_path})")
+            except Exception:
+                print("Host direct mount: unknown")
 
         # Host mount check
         try:
@@ -1264,6 +1464,22 @@ def main(argv: Iterable[str] | None = None) -> None:
 
         state_dir = _gate_state_dir(vm_name)
         pid_file = state_dir / "vm.pid"
+        host_direct_pid = _gate_host_direct_pid_path(state_dir)
+        host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
+        tunnel_pid = _gate_tunnel_pid_path(state_dir)
+
+        if host_direct_pid.exists():
+            _stop_pid_file(host_direct_pid, "host-direct", force=args.force)
+        if tunnel_pid.exists():
+            _stop_pid_file(tunnel_pid, "tunnel", force=args.force)
+        if host_direct_mount_record.exists():
+            try:
+                host_direct_mount = Path(host_direct_mount_record.read_text().strip())
+                _unmount_path(host_direct_mount)
+            except Exception as exc:
+                if not args.force:
+                    raise RuntimeError(f"Failed to unmount host-direct view: {exc}") from exc
+            host_direct_mount_record.unlink(missing_ok=True)
 
         if not args.skip_unmount:
             host_mount = _gate_mount_dir(vm_name)

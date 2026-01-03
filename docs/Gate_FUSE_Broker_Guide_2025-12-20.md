@@ -1,7 +1,7 @@
 # Shared Concurrency Substrate: Gate FUSE Lock Broker Guide (2025-12-20)
 
-> **Note:** Prefer the one-command workflow in `README.md` using `gate up`,
-> which handles VM build/run, provisioning, and host mount.
+> **Note:** Prefer the one-command workflow in `README.md` using `gate up`
+> (use `--host-mount-method host-direct` for reliable locking on the host).
 
 ## Goal
 Provide a broker-enforced filesystem mount that applies FIFO read/write locks for all editors and agents. This is a shared concurrency substrate for humans, LLM CLIs, code generators, and automated systems working on the same repo.
@@ -50,6 +50,7 @@ If you already have a repo on the host and want to mirror it into the VM:
 ```
 2) Inside the VM, run the broker and mount using the VM repo path.
 3) On the host, mount the VM view with **sshfs** and edit through it.
+   (For reliable host locking, prefer the host-direct flow in `README.md`.)
 
 ## Notes
 - Reads will wait if a writer is queued ahead (strict FIFO).
@@ -65,11 +66,8 @@ For a fully packaged VM workflow, see:
 For the Firecracker variant, see:
 `systems/gate_vm_firecracker/README.md` (use a unique host mount path per VM, e.g., `/mnt/gate_host_gate-fc`)
 
-## Smoke test (FIFO over host mount)
-Run on the host after mounting the VM view:
-```
-./scripts/smoke_test_fifo_sshfs.sh /mnt/gate_host
-```
+## Smoke test
+Run `tests/manual/lock_demo_run.py` against the host-direct mount.
 
 ## Scaling options (later)
 - Replace SSHFS with VirtioFS for lower latency and higher throughput.

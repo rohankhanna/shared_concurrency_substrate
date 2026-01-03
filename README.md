@@ -117,6 +117,18 @@ ssh-keygen -t ed25519 -f ~/.ssh/gate_vm -N ""
   --repo-path /path/to/host/repo
 ```
 
+Host-direct mode (recommended for reliable locking): run the broker in the VM,
+then mount the gated view directly on the host (no SSHFS).
+```
+./dist/gate up \
+  --base ubuntu-24.04 \
+  --vm-dir ./vm_build \
+  --vm-name gate-vm \
+  --ssh-key ~/.ssh/gate_vm.pub \
+  --repo-path /path/to/host/repo \
+  --host-mount-method host-direct
+```
+
 Supported bases: `ubuntu-22.04`, `ubuntu-24.04`, `debian-12`.
 
 If your terminal stops echoing after `gate up`, run:
@@ -134,14 +146,17 @@ Common VM commands:
 
 Host mount notes:
 - SSHFS runs in the background; unmount with `gate down` or `fusermount3 -u <mount>`.
+- Host-direct uses a host FUSE mount and an SSH tunnel to the VM broker.
 
 Logs and state directories (defaults):
 - Logs: `~/.local/state/gate/logs/<vm-name>/`
 - VM state: `~/.local/state/gate/state/<vm-name>/`
 - Host mount: `~/.local/state/gate/mounts/<vm-name>/`
+- Host-direct mount: `~/.local/state/gate/mounts/gate-host-direct`
 
 Optional flags for `gate up`:
 - `--host-mount /path/to/mount`
+- `--host-mount-method host-direct` (host FUSE + VM broker)
 - `--binary /path/to/gate` (defaults to `which gate`)
 - `--redownload` (force base image re-download)
 - `--max-hold-ms <milliseconds>` (hard cap for lock holds, default 3600000)

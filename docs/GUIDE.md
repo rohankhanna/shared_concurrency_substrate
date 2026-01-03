@@ -8,7 +8,7 @@ Provide a broker-enforced filesystem view that guarantees FIFO read/write lockin
 ## Architecture (short)
 - **Gate broker**: HTTP server that owns lock state in a SQLite DB.
 - **FUSE mount**: filesystem view that routes every open/read/write to the broker.
-- **Mount bridge** (optional): SSHFS or VirtioFS mount on the host.
+- **Mount bridge** (optional): host-direct FUSE (recommended) or SSHFS.
 
 All writes go through the broker. FIFO fairness blocks reads if a writer is queued ahead.
 
@@ -35,15 +35,13 @@ Add `--max-hold-ms` (or set `GATE_MAX_HOLD_MS`) to change the default 1-hour loc
 
 ## VM setup (recommended for stronger enforcement)
 Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`. The matching private key must exist alongside the public key (same path without `.pub`).
+For reliable locking on the host, use `--host-mount-method host-direct` (runs the broker in the VM and mounts the gated view on the host via FUSE + SSH tunnel).
 Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gate vm-list` and `gate down`.
-SSHFS is the supported host mount method; VirtioFS is a future option for performance.
 
 If your terminal stops echoing after `gate up`, run `stty echo`.
 
-## FIFO smoke test (over SSHFS)
-```
-./scripts/smoke_test_fifo_sshfs.sh /mnt/gate_host
-```
+## FIFO smoke test
+Use `tests/manual/lock_demo_run.py` against the host-direct mount to verify that writers block in order.
 
 ## Config defaults
 - State dir: `/var/lib/gate`

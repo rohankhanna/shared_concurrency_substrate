@@ -1,7 +1,7 @@
 # Shared Concurrency Substrate: Gate FUSE Lock Broker Guide (2025-12-20)
 
-> **Note:** Prefer the one-command workflow in `README.md` using `gate up`
-> (use `--host-mount-method host-direct` for reliable locking on the host).
+> **Note:** Prefer the one-command workflow in `README.md` using `gate up`.
+> Host-direct is the default and provides reliable locking on the host.
 
 ## Goal
 Provide a broker-enforced filesystem mount that applies FIFO read/write locks for all editors and agents. This is a shared concurrency substrate for humans, LLM CLIs, code generators, and automated systems working on the same repo.

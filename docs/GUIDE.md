@@ -35,7 +35,7 @@ Add `--max-hold-ms` (or set `GATE_MAX_HOLD_MS`) to change the default 1-hour loc
 
 ## VM setup (recommended for stronger enforcement)
 Use the one-command workflow: `gate up --vm-name <name> --vm-dir <dir> --ssh-key <pubkey> --repo-path <repo>`. The matching private key must exist alongside the public key (same path without `.pub`).
-For reliable locking on the host, use `--host-mount-method host-direct` (runs the broker in the VM and mounts the gated view on the host via FUSE + SSH tunnel).
+Host-direct is the default and provides reliable locking (broker in VM + host FUSE mount via SSH tunnel). Use `--host-mount-method sshfs` only if you explicitly need SSHFS.
 Logs live in `$XDG_STATE_HOME/gate/logs/<vm-name>/`. List and stop VMs with `gate vm-list` and `gate down`.
 
 If your terminal stops echoing after `gate up`, run `stty echo`.

@@ -145,8 +145,8 @@ ssh-keygen -t ed25519 -f ~/.ssh/gate_vm -N ""
   --repo-path /path/to/host/repo
 ```
 
-Host-direct mode (recommended for reliable locking): run the broker in the VM,
-then mount the gated view directly on the host (no SSHFS).
+Host-direct mode is the default and provides reliable locking: the broker runs
+in the VM and the gated view is mounted directly on the host (no SSHFS).
 ```
 ./dist/gate up \
   --base ubuntu-24.04 \
@@ -155,6 +155,17 @@ then mount the gated view directly on the host (no SSHFS).
   --ssh-key ~/.ssh/gate_vm.pub \
   --repo-path /path/to/host/repo \
   --host-mount-method host-direct
+```
+
+If you explicitly want SSHFS (not recommended for lock correctness):
+```
+./dist/gate up \
+  --base ubuntu-24.04 \
+  --vm-dir ./vm_build \
+  --vm-name gate-vm \
+  --ssh-key ~/.ssh/gate_vm.pub \
+  --repo-path /path/to/host/repo \
+  --host-mount-method sshfs
 ```
 
 Supported bases: `ubuntu-22.04`, `ubuntu-24.04`, `debian-12`.
@@ -185,7 +196,7 @@ Logs and state directories (defaults):
 
 Optional flags for `gate up`:
 - `--host-mount /path/to/mount`
-- `--host-mount-method host-direct` (host FUSE + VM broker)
+- `--host-mount-method host-direct|sshfs` (default: host-direct)
 - `--binary /path/to/gate` (defaults to `which gate`)
 - `--redownload` (force base image re-download)
 - `--max-hold-ms <milliseconds>` (hard cap for lock holds, default 3600000)

@@ -182,7 +182,7 @@ def _build_parser() -> argparse.ArgumentParser:
     up.add_argument(
         "--host-mount-method",
         choices=["sshfs", "host-direct"],
-        default="sshfs",
+        default="host-direct",
         help="How to mount a gated view on the host",
     )
     up.add_argument("--accept-host-key", action="store_true", default=True)

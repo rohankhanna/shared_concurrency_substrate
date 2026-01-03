@@ -69,6 +69,9 @@ For the Firecracker variant, see:
 ## Smoke test
 Run `tests/manual/lock_demo_run.py` against the host-direct mount.
 
+## Quickstart
+See `docs/QUICKSTART.md` for the verified one-page workflow + troubleshooting.
+
 ## Scaling options (later)
 - Replace SSHFS with VirtioFS for lower latency and higher throughput.
 - Replace the HTTP broker with a Unix socket or gRPC transport.

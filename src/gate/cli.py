@@ -553,6 +553,16 @@ def _wait_for_fuse_mount(path: Path, timeout_seconds: int) -> None:
         if time.monotonic() - start > timeout_seconds:
             raise RuntimeError(f"Timed out waiting for mount: {path}") from last_exc
         try:
+            with open("/proc/mounts", "r", encoding="utf-8") as mounts:
+                mounted = False
+                for line in mounts:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] == str(path):
+                        mounted = True
+                        break
+            if not mounted:
+                time.sleep(0.25)
+                continue
             os.listdir(path)
             return
         except OSError as exc:
@@ -827,6 +837,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                 args.name,
                 "--paths",
                 str(repo_root / "src"),
+                "--add-data",
+                f"{repo_root / 'src' / 'gate' / 'VERSION'}:gate",
                 "--distpath",
                 str(out_dir),
                 "--workpath",

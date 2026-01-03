@@ -42,6 +42,23 @@ If a mount is stale or the host-direct mount dir is not empty:
 ./dist/gate clean --vm-name gate-vm
 ```
 
+One‑page quickstart + troubleshooting: `docs/QUICKSTART.md`.
+
+One-command UX script (up → demo → down):
+```
+./scripts/full_cycle.sh \
+  --ssh-key ~/.ssh/shared_concurrency_substrate_test.pub \
+  --repo-path /path/to/host/repo
+```
+
+Stability loop (10 cycles):
+```
+./scripts/stability_run.sh \
+  --ssh-key ~/.ssh/shared_concurrency_substrate_test.pub \
+  --repo-path /path/to/host/repo \
+  --skip-build
+```
+
 ### 1) Install system packages (Ubuntu/Debian)
 Local + build requirements:
 ```
@@ -88,6 +105,12 @@ python -m pip install -r requirements.txt
 python3 scripts/gate_cli.py build-binary
 ```
 This produces `dist/gate`.
+Version is stamped from `src/gate/VERSION` (update it for releases).
+
+Best‑effort reproducible build:
+```
+./scripts/build_gate_binary_repro.sh
+```
 
 If you prefer Python-only operation, skip this step and run `scripts/gate_broker.py` and `scripts/gate_mount.py` directly.
 
@@ -261,6 +284,7 @@ python3 tests/manual/lock_demo_b.py
 - Host mount stuck: run `fusermount3 -u <mount>` and re-run.
 - `gate up` cannot find the binary: build it first or pass `--binary /path/to/gate`.
 - Need a clean repo sync into the VM: re-run `gate up` with `--repo-path` (it uses rsync with `--delete`).
+- CI smoke test: `PYTHONPATH=src python3 tests/automated/smoke_broker.py`
 
 ## Related docs
 - `docs/GUIDE.md` for architecture details and manual flows.

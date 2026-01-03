@@ -14,6 +14,7 @@ These scripts are helpers. Prefer the Gate executable subcommands for most workf
 - `build_vm_image.sh`, `run_vm_qemu.sh`: QEMU/KVM flow (prefer `gate up`).
 - `build_vm_firecracker.sh`, `run_vm_firecracker.sh`: Firecracker flow.
 - `build_gate_binary.sh`: build a single Gate executable (prefer `gate build-binary`).
+- `build_gate_binary_repro.sh`: best-effort reproducible build wrapper.
 - `build_gate_bundle.sh`: deprecated (bundle flow replaced by `gate up`).
 - `install_gate_bundle.sh`: deprecated (bundle flow replaced by `gate up`).
 
@@ -23,5 +24,7 @@ These scripts are helpers. Prefer the Gate executable subcommands for most workf
 - `export_shared_substrate.sh`: exports a copy of this folder into a new tree.
 
 ## Tests
-- `smoke_test_fifo_sshfs.sh`: end-to-end FIFO blocking check over SSHFS (NFS is recommended for host editing).
+- `full_cycle.sh`: run `gate up` -> demo -> `gate down` in one command.
+- `stability_run.sh`: run the full cycle N times (default: 10).
+- `smoke_test_fifo_sshfs.sh`: legacy FIFO check over SSHFS.
 Manual lock demo scripts now live in `tests/manual/`.

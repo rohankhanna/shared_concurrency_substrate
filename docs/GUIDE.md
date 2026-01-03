@@ -54,6 +54,10 @@ Use `tests/manual/lock_demo_run.py` against the host-direct mount to verify that
 - Max hold cap: `GATE_MAX_HOLD_MS` (default: 3600000; applies to read/write locks)
 - Env vars: `GATE_STATE_DIR`, `GATE_BROKER_HOST`, `GATE_BROKER_PORT`, `GATE_MAX_HOLD_MS`
 
+## Versioning and builds
+- Version is read from `src/gate/VERSION` (used by `gate --version` and baked into the binary).
+- Best‑effort reproducible build: `./scripts/build_gate_binary_repro.sh`.
+
 ## Roadmap
 - Replace SSHFS with VirtioFS for performance.
 - Swap HTTP for Unix socket or gRPC.

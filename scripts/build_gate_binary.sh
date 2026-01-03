@@ -70,6 +70,7 @@ pyinstaller \
   --onefile \
   --name "$NAME" \
   --paths "$ROOT_DIR/src" \
+  --add-data "$ROOT_DIR/src/gate/VERSION:gate" \
   --distpath "$OUT_DIR" \
   --workpath "$PYI_WORK" \
   --specpath "$PYI_SPEC" \

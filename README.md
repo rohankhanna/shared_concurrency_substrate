@@ -175,6 +175,7 @@ Common VM commands:
 Host mount notes:
 - SSHFS runs in the background; unmount with `gate down` or `fusermount3 -u <mount>`.
 - Host-direct uses a host FUSE mount and an SSH tunnel to the VM broker.
+  If port 8787 is in use, Gate picks the next free local port automatically.
 
 Logs and state directories (defaults):
 - Logs: `~/.local/state/gate/logs/<vm-name>/`

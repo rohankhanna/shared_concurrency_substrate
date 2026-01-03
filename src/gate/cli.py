@@ -360,6 +360,10 @@ def _gate_host_direct_mount_path(state_dir: Path) -> Path:
     return state_dir / "host-direct.mount"
 
 
+def _gate_host_direct_port_path(state_dir: Path) -> Path:
+    return state_dir / "host-direct.port"
+
+
 def _qemu_command(
     vm_dir: Path,
     vm_name: str,
@@ -557,6 +561,19 @@ def _wait_for_fuse_mount(path: Path, timeout_seconds: int) -> None:
                 time.sleep(0.25)
                 continue
             raise
+
+
+def _pick_free_port(start_port: int, max_tries: int = 20) -> int:
+    for offset in range(max_tries):
+        port = start_port + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError(f"No free port found starting at {start_port}")
 
 
 def _safe_clear_dir(path: Path, root: Path) -> None:
@@ -973,6 +990,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         tunnel_pid_path = _gate_tunnel_pid_path(state_dir)
         host_direct_pid_path = _gate_host_direct_pid_path(state_dir)
         host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
+        host_direct_port_path = _gate_host_direct_port_path(state_dir)
         ssh_key_path = Path(args.ssh_key).expanduser()
         if not ssh_key_path.is_file():
             parser.error(f"SSH key not found: {ssh_key_path}")
@@ -1262,6 +1280,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                     _ensure_empty_dir(host_mount)
                     host_direct_mount_record.write_text(str(host_mount))
                     # Start SSH tunnel for broker
+                    host_direct_port = _pick_free_port(8787)
+                    host_direct_port_path.write_text(str(host_direct_port))
                     if tunnel_pid_path.exists():
                         try:
                             existing_pid = int(tunnel_pid_path.read_text().strip())
@@ -1277,15 +1297,20 @@ def main(argv: Iterable[str] | None = None) -> None:
                             "ExitOnForwardFailure=yes",
                             "-N",
                             "-L",
-                            "8787:127.0.0.1:8787",
+                            f"{host_direct_port}:127.0.0.1:8787",
                             "gate@127.0.0.1",
                         ]
                         tunnel_pid = _run_background_pid(tunnel_cmd, log_dir / "tunnel.log")
                         tunnel_pid_path.write_text(str(tunnel_pid))
                         started_tunnel = True
-                    _wait_for_port("127.0.0.1", 8787, 20)
+                    _wait_for_port("127.0.0.1", host_direct_port, 20)
 
                     env = os.environ.copy()
+                    if getattr(sys, "frozen", False):
+                        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+                        unpack_dir = state_dir / "pyi"
+                        unpack_dir.mkdir(parents=True, exist_ok=True)
+                        env["PYI_UNPACK_DIR"] = str(unpack_dir)
                     host_mount_cmd = [
                         str(binary_path),
                         "mount",
@@ -1296,7 +1321,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                         "--broker-host",
                         "127.0.0.1",
                         "--broker-port",
-                        "8787",
+                        str(host_direct_port),
                         "--max-hold-ms",
                         str(args.max_hold_ms),
                         "--foreground",
@@ -1334,6 +1359,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                     pass
             if started_tunnel:
                 _stop_pid_file(tunnel_pid_path, "tunnel", force=True)
+            if host_direct_port_path.exists():
+                host_direct_port_path.unlink(missing_ok=True)
             if not args.keep_vm_on_error and started_vm and pid_file.exists():
                 try:
                     pid = int(pid_file.read_text().strip())
@@ -1357,6 +1384,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         host_direct_pid = _gate_host_direct_pid_path(state_dir)
         host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
         tunnel_pid = _gate_tunnel_pid_path(state_dir)
+        host_direct_port = _gate_host_direct_port_path(state_dir)
         known_hosts = state_dir / "known_hosts"
         print(f"Logs: {log_dir}")
         pid_file = state_dir / "vm.pid"
@@ -1401,6 +1429,11 @@ def main(argv: Iterable[str] | None = None) -> None:
                 print(f"SSH tunnel: {status} (pid {pid})")
             except Exception:
                 print("SSH tunnel: unknown (pid file unreadable)")
+        if host_direct_port.exists():
+            try:
+                print(f"Host direct port: {host_direct_port.read_text().strip()}")
+            except Exception:
+                print("Host direct port: unknown")
 
         if host_direct_pid.exists():
             try:
@@ -1494,11 +1527,14 @@ def main(argv: Iterable[str] | None = None) -> None:
         host_direct_pid = _gate_host_direct_pid_path(state_dir)
         host_direct_mount_record = _gate_host_direct_mount_path(state_dir)
         tunnel_pid = _gate_tunnel_pid_path(state_dir)
+        host_direct_port = _gate_host_direct_port_path(state_dir)
 
         if host_direct_pid.exists():
             _stop_pid_file(host_direct_pid, "host-direct", force=args.force)
         if tunnel_pid.exists():
             _stop_pid_file(tunnel_pid, "tunnel", force=args.force)
+        if host_direct_port.exists():
+            host_direct_port.unlink(missing_ok=True)
         if host_direct_mount_record.exists():
             try:
                 host_direct_mount = Path(host_direct_mount_record.read_text().strip())

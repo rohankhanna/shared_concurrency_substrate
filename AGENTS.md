@@ -33,3 +33,5 @@ short note to the most relevant files.
 ## Remote execution
 - For any bash tasks that do not require sudo, the agent should run the
   commands directly instead of asking the user to run them.
+- This includes all ssh/scp tasks in this repo (VM bring-up, provisioning,
+  diagnostics) whenever possible.

@@ -14,6 +14,34 @@ Gate provides a broker-enforced filesystem view that applies strict FIFO read/wr
 
 ## Setup from scratch
 
+### Quickstart (recommended host-direct workflow)
+```
+./dist/gate up \
+  --base ubuntu-24.04 \
+  --vm-dir ./vm_build \
+  --vm-name gate-vm \
+  --ssh-key ~/.ssh/shared_concurrency_substrate_test.pub \
+  --repo-path /path/to/host/repo \
+  --host-mount-method host-direct
+```
+
+Verify locking (non-product test):
+```
+GATE_DEMO_MOUNT=$HOME/.local/state/gate/mounts/gate-host-direct \
+GATE_DEMO_FILE=README.md \
+python3 tests/manual/lock_demo_run.py
+```
+
+Shutdown:
+```
+./dist/gate down --vm-name gate-vm
+```
+
+If a mount is stale or the host-direct mount dir is not empty:
+```
+./dist/gate clean --vm-name gate-vm
+```
+
 ### 1) Install system packages (Ubuntu/Debian)
 Local + build requirements:
 ```

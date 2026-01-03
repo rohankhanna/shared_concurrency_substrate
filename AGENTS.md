@@ -2,6 +2,8 @@
 
 When you make changes in this repository, you MUST keep all user-facing
 documentation up to date, including `README.md` and any files in `docs/`.
+Documentation updates must happen in the same prompt/commit as the code change
+(no “doc updates later”).
 
 ## Required updates
 - If you change CLI commands, flags, defaults, or workflows, update the
@@ -13,6 +15,7 @@ documentation up to date, including `README.md` and any files in `docs/`.
 
 ## Quick checklist (run through before finalizing)
 - [ ] README instructions match actual command names and flags.
+- [ ] Quickstart instructions match the current recommended workflow.
 - [ ] VM flows are up to date for QEMU and Firecracker (if impacted).
 - [ ] Log locations and defaults are documented if changed.
 - [ ] New files/dirs that users must create are documented.

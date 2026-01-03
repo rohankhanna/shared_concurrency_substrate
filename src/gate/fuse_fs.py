@@ -345,7 +345,7 @@ class GateFuse(Operations):
             self._release(lock_id, owner=owner)
 
     def flush(self, path, fh):
-        if os.environ.get("GATE_RELEASE_ON_FLUSH", "1") == "1":
+        if os.environ.get("GATE_RELEASE_ON_FLUSH", "0") == "1":
             self._finalize_handle(fh, path, reason="flush")
             return 0
         with self._fd_lock:

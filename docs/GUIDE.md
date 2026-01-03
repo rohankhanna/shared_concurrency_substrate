@@ -18,6 +18,8 @@ assigns a unique owner token per open handle, reuses that token for follow‑up 
 path when a handle already exists (for example, `touch` calling `utimens` while the FD is open), and always
 uses a fresh owner token for new opens. The broker maintains a per‑owner hold count and releases the lock only
 when the count returns to zero.
+Locks are held until the handle is released (close), not on flush. Set `GATE_RELEASE_ON_FLUSH=1` to restore
+legacy behavior.
 
 ## Local setup (single machine)
 ```

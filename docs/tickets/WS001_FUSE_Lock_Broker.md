@@ -1,5 +1,5 @@
 # Ticket: WS001 — FUSE Lock Broker MVP (Plan Only)
-Status: Planned | Owner: TBD | Target: 2025-12
+Status: In Progress | Owner: Gemini | Target: 2025-12
 
 Objective
 - Implement a DB-backed lock broker and FUSE mount that enforces FIFO read/write locks for all editors/agents.
@@ -11,12 +11,12 @@ Deliverables
 - Documentation for mount usage and enforcement model.
 
 Steps
-1) Define DB schema for locks, leases, queue, and audit events.
-2) Implement broker API (Unix socket or localhost HTTP).
-3) Implement FIFO lock granting and timeouts.
-4) Implement FUSE mount that blocks on lock acquisition for write/rename.
-5) Enforce repo read-only permissions for non-broker users.
-6) Add basic tests for queue fairness and crash recovery.
+1) [x] Define DB schema for locks, leases, queue, and audit events.
+2) [x] Implement broker API (Unix socket or localhost HTTP).
+3) [x] Implement FIFO lock granting and timeouts.
+4) [x] Implement FUSE mount that blocks on lock acquisition for write/rename.
+5) [ ] Enforce repo read-only permissions for non-broker users.
+6) [x] Add basic tests for queue fairness and crash recovery.
 
 Definition of Done (DoD)
 - Editors save through the mount and block when locks are held.

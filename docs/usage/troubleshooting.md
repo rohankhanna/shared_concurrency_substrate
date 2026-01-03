@@ -26,5 +26,5 @@
 ### CI/Smoke Test
 *   Run the automated smoke test:
     ```bash
-    PYTHONPATH=src python3 tests/automated/smoke_broker.py
+    PYTHONPATH=src python3 tests/automated/test_broker_fairness.py
     ```

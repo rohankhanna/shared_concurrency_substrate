@@ -1,7 +1,7 @@
 # Architecture Overview
 
 ## Goal
-Provide a broker-enforced filesystem view that applies strict FIFO read/write locking to any editor or automation. You edit a mounted view, and the broker serializes access so writers cannot be skipped and readers block behind queued writers.
+Provide a broker-enforced filesystem view that applies strict FIFO read/write locking to any editor or automation. Users and tools access the repository through a mounted filesystem view, and the broker serializes access so writers cannot be skipped and readers block behind queued writers.
 
 ## Components
 *   **Gate Broker:** An HTTP server with a SQLite-backed lock store. It manages the queue and grants locks.
